@@ -77,6 +77,24 @@
     <!-- Role Display -->
     <div id="role-display">Mode: Local Play</div>
 
+    <!-- Host Settings Menu -->
+    <div id="settingsMenu" style="display: none; position: absolute; bottom: 30px; right: 30px; background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; z-index: 1000;">
+        <h3 style="margin-top: 0;">Host Settings</h3>
+        <div>
+            <label>Base Speed: <input type="number" id="baseSpeed" step="0.001" value="0.01"></label>
+            <input type="range" id="baseSpeedRange" min="0.005" max="0.03" step="0.001" value="0.01">
+        </div>
+        <div>
+            <label>Speed Increment: <input type="number" id="speedInc" step="0.001" value="0.004"></label>
+            <input type="range" id="speedIncRange" min="0.001" max="0.01" step="0.001" value="0.004">
+        </div>
+        <div>
+            <label>Max Speed: <input type="number" id="maxSpeed" step="0.01" value="0.10"></label>
+            <input type="range" id="maxSpeedRange" min="0.05" max="0.2" step="0.01" value="0.10">
+        </div>
+        <button onclick="applySettings()" style="margin-top: 10px;">Apply to All Players</button>
+    </div>
+
     <!-- Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
