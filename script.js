@@ -17,6 +17,11 @@ let gameInterval;
 let roomCode = '';
 let pendingRestart = false;
 let syncInterval;
+let lastRedBallAngle = 0;
+let lastBlueBallAngle = 0;
+let targetRedBallAngle = 0;
+let targetBlueBallAngle = 0;
+let interpolationFactor = 0.2; // Adjust for smoother movement (0.1-0.5)
 
 
 
@@ -183,22 +188,21 @@ function syncGameState() {
     if (isHost && conn && conn.open) {
         conn.send({
             type: 'sync',
-            gameState: {
-                redScore: redScore,
-                blueScore: blueScore,
-                redBallAngle: redBallAngle,
-                blueBallAngle: blueBallAngle,
-                redBallSpeed: redBallSpeed,
-                blueBallSpeed: blueBallSpeed,
-                redDirection: redDirection,
-                blueDirection: blueDirection,
-                redBallStarted: redBallStarted,
-                blueBallStarted: blueBallStarted,
-                gameTime: gameTime
-            }
+            ra: redBallAngle,   // Shortened keys
+            ba: blueBallAngle,
+            rs: redBallSpeed,
+            bs: blueBallSpeed,
+            rd: redDirection,
+            bd: blueDirection,
+            rbs: redBallStarted,
+            bbs: blueBallStarted,
+            gt: gameTime,
+            rs: redScore,
+            bs: blueScore
         });
     }
 }
+
 
 
 
@@ -1286,12 +1290,17 @@ function showZoneFeedback(player, zone) {
             }
         }
     } 
-    // Non-host clients only update visuals based on received state
+
     else if (onlineMode && !isHost) {
-        // Just update ball positions based on angles received from host
+        // Smoothly interpolate toward host's positions
+        redBallAngle = lerp(redBallAngle, targetRedBallAngle, 0.2);
+        blueBallAngle = lerp(blueBallAngle, targetBlueBallAngle, 0.2);
+        
         updateBallPosition(redBall, redBallAngle, 2.0);
         updateBallPosition(blueBall, blueBallAngle, 1.0);
     }
+    
+    
 
     if (gameActive && gameStarted) {
         // Just update physics, don't check for winners here
@@ -1376,7 +1385,7 @@ function setupConnection() {
             // Frequent state sync (10 times per second)
             syncInterval = setInterval(() => {
                 if (gameStarted) syncGameState();
-            }, 100);
+            }, 50);
         } else {
             // Remove the toggle UI if it exists (client should NOT have it)
             const toggleDiv = document.getElementById('hit-zone-toggle');
@@ -1417,13 +1426,20 @@ function setupConnection() {
                 if (toggle) toggle.checked = data.show;
             }
         }
+        
         else if (data.type === 'sync' && !isHost) {
-            // Client receives authoritative state from host
+            // Store previous positions
+            lastRedBallAngle = redBallAngle;
+            lastBlueBallAngle = blueBallAngle;
+            
+            // Update target positions (don't set current angles directly)
+            targetRedBallAngle = data.gameState.redBallAngle;
+            targetBlueBallAngle = data.gameState.blueBallAngle;
+            
+            // Update other game state
             redScore = data.gameState.redScore;
             blueScore = data.gameState.blueScore;
-            redBallAngle = data.gameState.redBallAngle;
-            blueBallAngle = data.gameState.blueBallAngle;
-            redBallSpeed = data.gameState.redBallSpeed; 
+            redBallSpeed = data.gameState.redBallSpeed;
             blueBallSpeed = data.gameState.blueBallSpeed;
             redDirection = data.gameState.redDirection;
             blueDirection = data.gameState.blueDirection;
@@ -1432,10 +1448,14 @@ function setupConnection() {
             gameTime = data.gameState.gameTime;
             
             // Update visuals
-            updateBallPosition(redBall, redBallAngle, 2.0);
-            updateBallPosition(blueBall, blueBallAngle, 1.0);
             updateScoreBoard();
         }
+        
+        function lerp(current, target, factor) {
+            return current + (target - current) * factor;
+        }
+        
+        
     });
 }
 
