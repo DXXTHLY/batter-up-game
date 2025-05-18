@@ -16,7 +16,18 @@ let opponentName = "Opponent";
 let gameInterval; 
 let roomCode = '';
 let pendingRestart = false;
+let syncInterval;
+let lastRedBallAngle = 0;
+let lastBlueBallAngle = 0;
+let targetRedBallAngle = 0;
+let targetBlueBallAngle = 0;
+let interpolationFactor = 0.2; // Adjust for smoother movement (0.1-0.5)
 
+let gameSettings = {
+    baseSpeed: 0.01,
+    speedIncrement: 0.004,
+    maxSpeed: 0.10
+};
 
 
 // Add at the top with other state variables
@@ -177,6 +188,64 @@ function init() {
 
 }
 
+
+function syncGameState() {
+    if (isHost && conn && conn.open) {
+        conn.send({
+            type: 'sync',
+            ra: redBallAngle,   // Shortened keys
+            ba: blueBallAngle,
+            rs: redBallSpeed,
+            bs: blueBallSpeed,
+            rd: redDirection,
+            bd: blueDirection,
+            rbs: redBallStarted,
+            bbs: blueBallStarted,
+            gt: gameTime,
+            rs: redScore,
+            bs: blueScore
+        });
+    }
+}
+
+
+function showSettingsMenu() {
+    if (isHost || !onlineMode) {
+        document.getElementById('settingsMenu').style.display = 'block';
+        // Set current values
+        document.getElementById('baseSpeed').value = gameSettings.baseSpeed;
+        document.getElementById('baseSpeedRange').value = gameSettings.baseSpeed;
+        document.getElementById('speedInc').value = gameSettings.speedIncrement;
+        document.getElementById('speedIncRange').value = gameSettings.speedIncrement;
+        document.getElementById('maxSpeed').value = gameSettings.maxSpeed;
+        document.getElementById('maxSpeedRange').value = gameSettings.maxSpeed;
+    }
+}
+
+function applySettings() {
+    gameSettings = {
+        baseSpeed: parseFloat(document.getElementById('baseSpeed').value),
+        speedIncrement: parseFloat(document.getElementById('speedInc').value),
+        maxSpeed: parseFloat(document.getElementById('maxSpeed').value)
+    };
+    
+    // Update local physics
+    redBallBaseSpeed = gameSettings.baseSpeed;
+    blueBallBaseSpeed = gameSettings.baseSpeed;
+    speedIncrement = gameSettings.speedIncrement;
+    maxSpeed = gameSettings.maxSpeed;
+
+    // Sync to all players
+    if (onlineMode && conn) {
+        conn.send({ 
+            type: 'game-settings',
+            settings: gameSettings
+        });
+    }
+}
+
+
+
 function createInstructions() {
     const instructions = document.createElement('div');
     instructions.style.position = 'absolute';
@@ -238,7 +307,32 @@ function showLeaderboard() {
     });
     html += `</table>`;
     leaderboard.innerHTML = html;
+
+    document.querySelectorAll('#settingsMenu input').forEach(input => {
+        input.addEventListener('input', function(e) {
+            const id = e.target.id;
+            if (id.includes('Range')) {
+                document.getElementById(id.replace('Range', '')).value = e.target.value;
+            } else {
+                document.getElementById(id + 'Range').value = e.target.value;
+            }
+        });
+    });
+    
+    if (isHost || !onlineMode) {
+        const settingsBtn = document.createElement('button');
+        settingsBtn.textContent = 'Host Settings';
+        settingsBtn.style.position = 'absolute';
+        settingsBtn.style.bottom = '30px';
+        settingsBtn.style.right = '180px'; // Adjust if needed
+        settingsBtn.style.zIndex = '1000';
+        settingsBtn.onclick = showSettingsMenu;
+        document.body.appendChild(settingsBtn);
+    }
+    
 }
+
+
 
 
 function createPlayers() {
@@ -745,55 +839,64 @@ function processRedHit() {
     // In processRedHit():
     if (!redBallStarted) {
         if (zone === ZONE_HIT) {
-        redBallStarted = true;
-        gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
-        redBallSpeed = redBallBaseSpeed;
-        redDirection = -1;
-        redScore++;
-        redLastHitTime = currentTime;
-        playHitSound();
-        updateScoreBoard();
+            redBallStarted = true;
+            gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
+            redBallSpeed = redBallBaseSpeed;
+            redDirection = -1;
+            if (!onlineMode || isHost) {
+                redScore++;
+                updateScoreBoard();
+            }
+            redLastHitTime = currentTime;
+            playHitSound();
         }
         return;
     }
     
+    
     // Process different outcomes based on zones
     switch (zone) {
         case ZONE_TOO_EARLY: // Red zone - too early
-          // Reverse direction and reduce speed
-          redDirection *= -1;
-          redBallSpeed = redBallBaseSpeed * 0.5; // Half speed
-          redHitCount = 0;
-          redLastHitTime = currentTime;
-          playHitSound();
-          redMissed = false;
-          showZoneFeedback('red', zone); // <-- Add here
-          break;
-      
+            // Reverse direction and reduce speed
+            redDirection *= -1;
+            redBallSpeed = redBallBaseSpeed * 0.5;
+            redHitCount = 0;
+            redLastHitTime = currentTime;
+            playHitSound();
+            redMissed = false;
+            showZoneFeedback('red', zone);
+            break;
+    
         case ZONE_HIT: // Green zone - good hit
-          // Speed up ball in correct direction
-          redHitCount++;
-          redBallSpeed = Math.min(redBallBaseSpeed + (speedIncrement * redHitCount), maxSpeed);
-          redDirection = -1; // Ensure correct direction
-          redLastHitTime = currentTime;
-          playHitSound();
-          redScore++;
-          updateScoreBoard();
-          redMissed = false;
-          showZoneFeedback('red', zone); // <-- Add here
-          break;
-      
+            // Speed up ball in correct direction
+            redHitCount++;
+            redBallSpeed = Math.min(gameSettings.baseSpeed + (gameSettings.speedIncrement * redHitCount), gameSettings.maxSpeed)
+            redDirection = -1;
+            redLastHitTime = currentTime;
+            playHitSound();
+    
+            // Only update score if host or local mode
+            if (!onlineMode || isHost) {
+                redScore++;
+                updateScoreBoard();
+            }
+    
+            redMissed = false;
+            showZoneFeedback('red', zone);
+            break;
+    
         case ZONE_MISS: // Yellow zone - miss
-          // Reduce speed but maintain direction
-          redBallSpeed *= missSpeedPenalty;
-          if (redBallSpeed < redBallBaseSpeed * 0.3) {
-            redBallSpeed = redBallBaseSpeed * 0.3;
-          }
-          redHitCount = 0;
-          redMissed = true;
-          showZoneFeedback('red', zone); // <-- Add here
-          break;
-      }
+            // Reduce speed but maintain direction
+            redBallSpeed *= missSpeedPenalty;
+            if (redBallSpeed < redBallBaseSpeed * 0.3) {
+                redBallSpeed = redBallBaseSpeed * 0.3;
+            }
+            redHitCount = 0;
+            redMissed = true;
+            showZoneFeedback('red', zone);
+            break;
+    }
+    
       
   }
   
@@ -830,52 +933,61 @@ function processRedHit() {
 
     if (!blueBallStarted) {
         if (zone === ZONE_HIT) {
-          blueBallStarted = true;
-          gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
-          blueBallSpeed = blueBallBaseSpeed;
-          blueDirection = 1;
-          blueScore++;
-          blueLastHitTime = currentTime;
-          playHitSound();
-          updateScoreBoard();
+            blueBallStarted = true;
+            gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
+            blueBallSpeed = blueBallBaseSpeed;
+            blueDirection = 1;
+            if (!onlineMode || isHost) {
+                blueScore++;
+                updateScoreBoard();
+            }
+            blueLastHitTime = currentTime;
+            playHitSound();
         }
         return;
-      }
+    }
+    
     
     // Process different outcomes based on zones
     switch (zone) {
         case ZONE_TOO_EARLY:
-          blueDirection *= -1;
-          blueBallSpeed = blueBallBaseSpeed * 0.5;
-          blueHitCount = 0;
-          blueLastHitTime = currentTime;
-          playHitSound();
-          blueMissed = false;
-          showZoneFeedback('blue', zone); // <-- Add here
-          break;
-      
+            blueDirection *= -1;
+            blueBallSpeed = blueBallBaseSpeed * 0.5;
+            blueHitCount = 0;
+            blueLastHitTime = currentTime;
+            playHitSound();
+            blueMissed = false;
+            showZoneFeedback('blue', zone);
+            break;
+    
         case ZONE_HIT:
-          blueHitCount++;
-          blueBallSpeed = Math.min(blueBallBaseSpeed + (speedIncrement * blueHitCount), maxSpeed);
-          blueDirection = 1;
-          blueLastHitTime = currentTime;
-          playHitSound();
-          blueScore++;
-          updateScoreBoard();
-          blueMissed = false;
-          showZoneFeedback('blue', zone); // <-- Add here
-          break;
-      
+            blueHitCount++;
+            blueBallSpeed = Math.min(blueBallBaseSpeed + (speedIncrement * blueHitCount), maxSpeed);
+            blueDirection = 1;
+            blueLastHitTime = currentTime;
+            playHitSound();
+    
+            // Only update score if host or local mode
+            if (!onlineMode || isHost) {
+                blueScore++;
+                updateScoreBoard();
+            }
+    
+            blueMissed = false;
+            showZoneFeedback('blue', zone);
+            break;
+    
         case ZONE_MISS:
-          blueBallSpeed *= missSpeedPenalty;
-          if (blueBallSpeed < blueBallBaseSpeed * 0.3) {
-            blueBallSpeed = blueBallBaseSpeed * 0.3;
-          }
-          blueHitCount = 0;
-          blueMissed = true;
-          showZoneFeedback('blue', zone); // <-- Add here
-          break;
-      }
+            blueBallSpeed *= missSpeedPenalty;
+            if (blueBallSpeed < blueBallBaseSpeed * 0.3) {
+                blueBallSpeed = blueBallBaseSpeed * 0.3;
+            }
+            blueHitCount = 0;
+            blueMissed = true;
+            showZoneFeedback('blue', zone);
+            break;
+    }
+    
       
   }
   
@@ -1176,76 +1288,89 @@ function showZoneFeedback(player, zone) {
 
 
   function updateBallPhysics() {
-    // Only update red ball if it has started
-    if (redBallStarted) {
-      redBallAngle += redBallSpeed * redDirection;
-      updateBallPosition(redBall, redBallAngle, 2.0);
-      redBallAngle = normalizeAngle(redBallAngle);
-    }
-    
-    // Only update blue ball if it has started
-    if (blueBallStarted) {
-      blueBallAngle += blueBallSpeed * blueDirection;
-      updateBallPosition(blueBall, blueBallAngle, 1.0);
-      blueBallAngle = normalizeAngle(blueBallAngle);
-    }
-  
-    // Reset miss state if ball is moving again
-    if (redBallSpeed > 0) redMissed = false;
-    if (blueBallSpeed > 0) blueMissed = false;
-    
-    const currentTime = Date.now();
-    
-    // Ensure balls always maintain a minimum speed once game has started
-    if (gameStarted) {
-        const minimumSpeed = redBallBaseSpeed * 0.3;
-        
-        if (redBallSpeed < minimumSpeed) {
-            redBallSpeed = minimumSpeed;
-        }
-        if (blueBallSpeed < minimumSpeed) {
-            blueBallSpeed = minimumSpeed;
+    // Only update physics on host, or in local mode
+    if (!onlineMode || isHost) {
+        // Ball movement physics - only calculated on host or local mode
+        if (redBallStarted) {
+            redBallAngle += redBallSpeed * redDirection;
+            updateBallPosition(redBall, redBallAngle, 2.0);
+            redBallAngle = normalizeAngle(redBallAngle);
         }
         
-        // Ball recovery after a long period without hits (5 seconds)
-        const recoveryTime = 5000;
-        if (currentTime - redLastHitTime > recoveryTime && redBallSpeed < redBallBaseSpeed) {
-            redBallSpeed = Math.min(redBallSpeed * 1.01, redBallBaseSpeed);
+        if (blueBallStarted) {
+            blueBallAngle += blueBallSpeed * blueDirection;
+            updateBallPosition(blueBall, blueBallAngle, 1.0);
+            blueBallAngle = normalizeAngle(blueBallAngle);
         }
-        if (currentTime - blueLastHitTime > recoveryTime && blueBallSpeed < blueBallBaseSpeed) {
-            blueBallSpeed = Math.min(blueBallSpeed * 1.01, blueBallBaseSpeed);
+        
+        // Reset miss state if ball is moving again
+        if (redBallSpeed > 0) redMissed = false;
+        if (blueBallSpeed > 0) blueMissed = false;
+        
+        const currentTime = Date.now();
+        
+        // Ensure balls always maintain a minimum speed once game has started
+        if (gameStarted) {
+            const minimumSpeed = redBallBaseSpeed * 0.3;
+            
+            if (redBallSpeed < minimumSpeed) {
+                redBallSpeed = minimumSpeed;
+            }
+            if (blueBallSpeed < minimumSpeed) {
+                blueBallSpeed = minimumSpeed;
+            }
+            
+            // Ball recovery after a long period without hits (5 seconds)
+            const recoveryTime = 5000;
+            if (currentTime - redLastHitTime > recoveryTime && redBallSpeed < redBallBaseSpeed) {
+                redBallSpeed = Math.min(redBallSpeed * 1.01, redBallBaseSpeed);
+            }
+            if (currentTime - blueLastHitTime > recoveryTime && blueBallSpeed < blueBallBaseSpeed) {
+                blueBallSpeed = Math.min(blueBallSpeed * 1.01, blueBallBaseSpeed);
+            }
         }
+        
+        // Red ball speed decay
+        if (redBallSpeed > redBallBaseSpeed && currentTime - redLastHitTime > speedDecayDelay) {
+            // Gradually reduce speed toward base speed
+            redBallSpeed *= speedDecayRate;
+            
+            // If close enough to base speed, just set it to base speed
+            if (redBallSpeed < redBallBaseSpeed + 0.001) {
+                redBallSpeed = redBallBaseSpeed;
+                redHitCount = 0;
+            }
+        }
+        
+        // Blue ball speed decay
+        if (blueBallSpeed > blueBallBaseSpeed && currentTime - blueLastHitTime > speedDecayDelay) {
+            // Gradually reduce speed toward base speed
+            blueBallSpeed *= speedDecayRate;
+            
+            // If close enough to base speed, just set it to base speed
+            if (blueBallSpeed < blueBallBaseSpeed + 0.001) {
+                blueBallSpeed = blueBallBaseSpeed;
+                blueHitCount = 0;
+            }
+        }
+    } 
+
+    else if (onlineMode && !isHost) {
+        // Smoothly interpolate toward host's positions
+        redBallAngle = lerp(redBallAngle, targetRedBallAngle, 0.2);
+        blueBallAngle = lerp(blueBallAngle, targetBlueBallAngle, 0.2);
+        
+        updateBallPosition(redBall, redBallAngle, 2.0);
+        updateBallPosition(blueBall, blueBallAngle, 1.0);
     }
     
-    // Red ball speed decay
-    if (redBallSpeed > redBallBaseSpeed && currentTime - redLastHitTime > speedDecayDelay) {
-        // Gradually reduce speed toward base speed
-        redBallSpeed *= speedDecayRate;
-        
-        // If close enough to base speed, just set it to base speed
-        if (redBallSpeed < redBallBaseSpeed + 0.001) {
-            redBallSpeed = redBallBaseSpeed;
-            redHitCount = 0;
-        }
-    }
     
-    // Blue ball speed decay
-    if (blueBallSpeed > blueBallBaseSpeed && currentTime - blueLastHitTime > speedDecayDelay) {
-        // Gradually reduce speed toward base speed
-        blueBallSpeed *= speedDecayRate;
-        
-        // If close enough to base speed, just set it to base speed
-        if (blueBallSpeed < blueBallBaseSpeed + 0.001) {
-            blueBallSpeed = blueBallBaseSpeed;
-            blueHitCount = 0;
-        }
-    }
-  
+
     if (gameActive && gameStarted) {
         // Just update physics, don't check for winners here
-      }
+    }
+}
 
-  }
 
 
 
@@ -1310,7 +1435,9 @@ function startLocal() {
     });
   }
   
-  function setupConnection() {
+
+
+function setupConnection() {
     conn.on('open', () => {
         conn.send({ type: 'name', name: playerName });
         if (isHost) {
@@ -1318,11 +1445,20 @@ function startLocal() {
             // Host sends initial toggle state to client
             const toggle = document.getElementById('toggle-hitzones');
             if (toggle) conn.send({ type: 'toggle-hitzones', show: toggle.checked });
+            
+            // Frequent state sync (10 times per second)
+            syncInterval = setInterval(() => {
+                if (gameStarted) syncGameState();
+            }, 50);
         } else {
             // Remove the toggle UI if it exists (client should NOT have it)
             const toggleDiv = document.getElementById('hit-zone-toggle');
             if (toggleDiv) toggleDiv.parentNode.removeChild(toggleDiv);
         }
+    });
+
+    conn.on('close', () => {
+        if (syncInterval) clearInterval(syncInterval);
     });
 
     conn.on('data', (data) => {
@@ -1354,8 +1490,47 @@ function startLocal() {
                 if (toggle) toggle.checked = data.show;
             }
         }
+        else if (data.type === 'game-settings') {
+            gameSettings = data.settings;
+            redBallBaseSpeed = gameSettings.baseSpeed;
+            blueBallBaseSpeed = gameSettings.baseSpeed;
+            speedIncrement = gameSettings.speedIncrement;
+            maxSpeed = gameSettings.maxSpeed;
+        }
+        
+        
+        else if (data.type === 'sync' && !isHost) {
+            // Store previous positions
+            lastRedBallAngle = redBallAngle;
+            lastBlueBallAngle = blueBallAngle;
+            
+            // Update target positions (don't set current angles directly)
+            targetRedBallAngle = data.gameState.redBallAngle;
+            targetBlueBallAngle = data.gameState.blueBallAngle;
+            
+            // Update other game state
+            redScore = data.gameState.redScore;
+            blueScore = data.gameState.blueScore;
+            redBallSpeed = data.gameState.redBallSpeed;
+            blueBallSpeed = data.gameState.blueBallSpeed;
+            redDirection = data.gameState.redDirection;
+            blueDirection = data.gameState.blueDirection;
+            redBallStarted = data.gameState.redBallStarted;
+            blueBallStarted = data.gameState.blueBallStarted;
+            gameTime = data.gameState.gameTime;
+            
+            // Update visuals
+            updateScoreBoard();
+        }
+        
+        function lerp(current, target, factor) {
+            return current + (target - current) * factor;
+        }
+        
+        
     });
 }
+
 
 
 
