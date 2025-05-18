@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batter Up! - It Takes Two Inspired Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            z-index: 1000;
+        }
+        #menu button {
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        #onlineMenu input {
+            display: block;
+            margin: 10px auto;
+            padding: 5px;
+            width: 200px;
+        }
+        #scoreBoard {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            text-align: center;
+            font-family: Arial;
+            z-index: 100;
+        }
+        #role-display {
+            position: absolute;
+            top: 70px;
+            left: 10px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 8px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <!-- Game Menu -->
+    <div id="menu">
+        <h1>Batter Up!</h1>
+        <button onclick="startLocal()">Local Multiplayer</button>
+        <button onclick="showOnlineMenu()">Online Multiplayer</button>
+        <div id="onlineMenu" style="display: none;">
+            <input type="text" id="playerName" placeholder="Your Name">
+            <button onclick="createRoom()">Create Private Room</button>
+            <br>
+            <input type="text" id="roomCode" placeholder="Enter Room Code">
+            <button onclick="joinRoom()">Join Room</button>
+        </div>
+    </div>
+
+    <!-- Score Board -->
+    <div id="scoreBoard"></div>
+
+    <!-- Role Display -->
+    <div id="role-display">Mode: Local Play</div>
+
+    <!-- Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    
+    <!-- Game Script -->
+    <script src="script.js"></script>
+</body>
+</html>

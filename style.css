@@ -1,0 +1,32 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: #222;
+  user-select: none;
+}
+
+#instructions {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: #fff;
+  background: rgba(0,0,0,0.6);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: Arial, sans-serif;
+  z-index: 10;
+}
+
+#scoreBoard {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 24px;
+  font-family: Arial, sans-serif;
+  z-index: 10;
+}
