@@ -322,13 +322,21 @@ function showLeaderboard() {
     if (isHost || !onlineMode) {
         const settingsBtn = document.createElement('button');
         settingsBtn.textContent = 'Host Settings';
-        settingsBtn.style.position = 'absolute';
+        settingsBtn.style.position = 'fixed';
         settingsBtn.style.bottom = '30px';
-        settingsBtn.style.right = '180px'; // Adjust if needed
+        settingsBtn.style.left = '30px';   // <-- bottom left corner
         settingsBtn.style.zIndex = '1000';
+        settingsBtn.style.padding = '12px 24px';
+        settingsBtn.style.fontSize = '18px';
+        settingsBtn.style.background = '#222';
+        settingsBtn.style.color = 'white';
+        settingsBtn.style.border = 'none';
+        settingsBtn.style.borderRadius = '8px';
+        settingsBtn.style.cursor = 'pointer';
         settingsBtn.onclick = showSettingsMenu;
         document.body.appendChild(settingsBtn);
     }
+    
     
 }
 
