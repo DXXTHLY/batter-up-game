@@ -160,6 +160,7 @@ function init() {
     createCountdownDisplay();
     createInstructions();
     addHitZoneMarkers();
+    hideLines(); // hide lines
     addDebugInfo();
     showHelpOverlay();
 
@@ -455,6 +456,18 @@ function updateScoreBoard() {
     }
 }
 
+function hideLines() {
+    const colorsToHide = [0xff0000, 0xffff00, 0x00ff00]; // red, yellow, green
+    scene.traverse((obj) => {
+      if (obj.material && obj.material.color) {
+        const colorHex = obj.material.color.getHex();
+        if (colorsToHide.includes(colorHex)) {
+          obj.visible = false;
+        }
+      }
+    });
+  }
+  
 
 function updateTimerDisplay() {
     if (gameActive) {
