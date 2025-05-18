@@ -14,6 +14,8 @@ let isHost = false;
 let playerName = "Player";
 let opponentName = "Opponent";
 let gameInterval; 
+let roomCode = '';
+let pendingRestart = false;
 
 
 
@@ -575,59 +577,94 @@ function onWindowResize() {
 }
 
 function onKeyDown(e) {
-    // Only process valid keys for current mode/role
-    if ((!onlineMode || (currentPlayerRole === 'red' && (e.key === 'a' || e.key === 'A')) || 
-                        (currentPlayerRole === 'blue' && (e.key === 'l' || e.key === 'L'))) &&
-        !e.repeat) { // Prevent key repeat from holding
-      // Handle red bat
-      if ((e.key === 'a' || e.key === 'A') && !redBatExtended) {
-        redBatExtended = true;
-        updateBatPosition(redBat, true, 1);
-      }
-      // Handle blue bat
-      if ((e.key === 'l' || e.key === 'L') && !blueBatExtended) {
-        blueBatExtended = true;
-        updateBatPosition(blueBat, true, -1);
-      }
+    // Prevent key repeat
+    if (e.repeat) return;
+
+    // Handle local mode or online role-specific keys
+    if (!onlineMode || (currentPlayerRole === 'red' && (e.key === 'a' || e.key === 'A')) || 
+                      (currentPlayerRole === 'blue' && (e.key === 'l' || e.key === 'L'))) {
+        // Handle red bat
+        if ((e.key === 'a' || e.key === 'A') && !redBatExtended) {
+            redBatExtended = true;
+            updateBatPosition(redBat, true, 1);
+        }
+        // Handle blue bat
+        if ((e.key === 'l' || e.key === 'L') && !blueBatExtended) {
+            blueBatExtended = true;
+            updateBatPosition(blueBat, true, -1);
+        }
     }
-    
-    // Always allow reset
+
+    // Handle reset (needs confirmation in online mode)
     if (e.key === 'r' || e.key === 'R') {
-      resetGame();
+        if (!onlineMode) {
+            resetGame();
+        } else if (conn) {
+            if (!pendingRestart) {
+                pendingRestart = true;
+                conn.send({ type: 'reset-request' });
+                showResetPrompt();
+            } else {
+                conn.send({ type: 'reset-confirm' });
+                resetGame();
+                pendingRestart = false;
+            }
+        }
     }
-  }
-  
-  function onKeyUp(e) {
+}
+
+function onKeyUp(e) {
     // Red player release (local or online red)
     if ((e.key === 'a' || e.key === 'A') && redBatExtended) {
-      redBatExtended = false;
-      updateBatPosition(redBat, false, 1);
-      if (gameActive) {
-        processRedHit();
-        swingBat('red');
-        // Sync with opponent if online
-        if (onlineMode && conn && currentPlayerRole === 'red') {
-          conn.send({ type: 'hit', player: 'red' });
+        redBatExtended = false;
+        updateBatPosition(redBat, false, 1);
+        if (gameActive) {
+            processRedHit();
+            swingBat('red');
+            // Sync with opponent if online
+            if (onlineMode && conn && currentPlayerRole === 'red') {
+                conn.send({ type: 'hit', player: 'red' });
+            }
         }
-      }
     }
     
     // Blue player release (local or online blue)
     if ((e.key === 'l' || e.key === 'L') && blueBatExtended) {
-      blueBatExtended = false;
-      updateBatPosition(blueBat, false, -1);
-      if (gameActive) {
-        processBlueHit();
-        swingBat('blue');
-        // Sync with opponent if online
-        if (onlineMode && conn && currentPlayerRole === 'blue') {
-          conn.send({ type: 'hit', player: 'blue' });
+        blueBatExtended = false;
+        updateBatPosition(blueBat, false, -1);
+        if (gameActive) {
+            processBlueHit();
+            swingBat('blue');
+            // Sync with opponent if online
+            if (onlineMode && conn && currentPlayerRole === 'blue') {
+                conn.send({ type: 'hit', player: 'blue' });
+            }
         }
-      }
     }
-  }
+}
   
-    
+    // Add these new functions
+function showResetPrompt() {
+    const prompt = document.createElement('div');
+    prompt.id = 'reset-prompt';
+    prompt.style.position = 'absolute';
+    prompt.style.top = '20%';
+    prompt.style.left = '50%';
+    prompt.style.transform = 'translateX(-50%)';
+    prompt.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    prompt.style.color = 'white';
+    prompt.style.padding = '10px';
+    prompt.style.borderRadius = '5px';
+    prompt.textContent = 'Restart requested. Press R again to confirm.';
+    document.body.appendChild(prompt);
+
+    setTimeout(() => {
+        if (document.getElementById('reset-prompt')) {
+            document.body.removeChild(prompt);
+            pendingRestart = false;
+        }
+    }, 3000);
+}
 
 // Simplified hit detection that works reliably and requires physical proximity
 function processRedHit() {
@@ -1189,63 +1226,78 @@ function startLocal() {
     playerName = document.getElementById('playerName').value || "Player";
     
     peer.on('open', (id) => {
+      roomCode = id;
       document.getElementById('menu').style.display = 'none';
-      // Reset variables
-      gameStarted = false;
-      redBallStarted = false;
-      blueBallStarted = false;
-      gameActive = false;
-      
       init();
       animate();
       onlineMode = true;
       isHost = true;
       currentPlayerRole = 'red';
       updateScoreBoard();
+      document.getElementById('roomCode').value = id.slice(0, 6);
     });
   
     peer.on('connection', (connection) => {
       conn = connection;
+      connection.on('open', () => {
+        connection.send({ type: 'role-assign', role: 'blue' });
+      });
       setupConnection();
     });
   }
   
   function joinRoom() {
-    const roomCode = document.getElementById('roomCode').value;
+    const code = document.getElementById('roomCode').value;
     playerName = document.getElementById('playerName').value || "Player";
     
     peer = new Peer({ host: '0.peerjs.com', port: 443, secure: true });
     
     peer.on('open', () => {
-      conn = peer.connect(roomCode);
+      conn = peer.connect(code);
+      conn.on('open', () => {
+        document.getElementById('menu').style.display = 'none';
+        init();
+        animate();
+        onlineMode = true;
+        currentPlayerRole = 'blue'; // Default until confirmed
+      });
       setupConnection();
-      document.getElementById('menu').style.display = 'none';
-      init();
-      animate();
-      onlineMode = true;
-      currentPlayerRole = 'blue';
     });
   }
   
   function setupConnection() {
     conn.on('open', () => {
-      conn.send({ type: 'name', name: playerName });
+        conn.send({ type: 'name', name: playerName });
+        if (isHost) {
+            conn.send({ type: 'role-assign', role: 'blue' });
+        }
     });
-  
+
     conn.on('data', (data) => {
-      if(data.type === 'name') {
-        opponentName = data.name;
-        updateScoreBoard();
-      }
-      else if(data.type === 'hit') {
-        if(data.player === 'red') processRedHit();
-        if(data.player === 'blue') processBlueHit();
-      }
-      else if(data.type === 'reset') {
-        resetGame();
-      }
+        if (data.type === 'name') {
+            opponentName = data.name;
+            updateScoreBoard();
+        }
+        else if (data.type === 'role-assign') {
+            currentPlayerRole = data.role;
+            updateScoreBoard();
+        }
+        else if (data.type === 'hit') {
+            if (data.player === 'red') processRedHit();
+            if (data.player === 'blue') processBlueHit();
+        }
+        else if (data.type === 'reset-request') {
+            pendingRestart = true;
+            showResetPrompt();
+        }
+        else if (data.type === 'reset-confirm') {
+            resetGame();
+            pendingRestart = false;
+        }
+        // Remove the old 'reset' handler if it exists
     });
-  }
+}
+
   
 
 function normalizeAngle(angle) {
