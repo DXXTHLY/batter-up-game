@@ -172,7 +172,8 @@ function init() {
     // Start game with countdown
     startCountdown();
     showLeaderboard();
-    if (!onlineMode || (onlineMode && isHost)) createHitZoneToggle();
+    if (!onlineMode || isHost) createHitZoneToggle();
+
 
 }
 
@@ -353,6 +354,7 @@ function addHitZoneMarkers() {
   
   function createHitZoneToggle() {
     // Only show for host in online mode or always in local mode
+    if (onlineMode && !isHost) return;
     const existing = document.getElementById('hit-zone-toggle');
     if (existing) return;
 
