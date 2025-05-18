@@ -172,6 +172,8 @@ function init() {
     // Start game with countdown
     startCountdown();
     showLeaderboard();
+    if (!onlineMode || isHost) createHitZoneToggle();
+
 }
 
 function createInstructions() {
@@ -349,8 +351,47 @@ function addHitZoneMarkers() {
   }
   
   
+  function createHitZoneToggle() {
+    // Only show for host in online mode or always in local mode
+    const existing = document.getElementById('hit-zone-toggle');
+    if (existing) return;
+
+    const toggleDiv = document.createElement('div');
+    toggleDiv.id = 'hit-zone-toggle';
+    toggleDiv.style.position = 'absolute';
+    toggleDiv.style.bottom = '30px';
+    toggleDiv.style.right = '30px';
+    toggleDiv.style.background = 'rgba(0,0,0,0.7)';
+    toggleDiv.style.color = 'white';
+    toggleDiv.style.padding = '16px';
+    toggleDiv.style.borderRadius = '8px';
+    toggleDiv.style.zIndex = '1000';
+    toggleDiv.style.fontFamily = 'Arial, sans-serif';
+
+    toggleDiv.innerHTML = `
+      <label style="font-size:18px;">
+        <input type="checkbox" id="toggle-hitzones" checked>
+        Show Hit Zones
+      </label>
+    `;
+
+    document.body.appendChild(toggleDiv);
+
+    document.getElementById('toggle-hitzones').addEventListener('change', (e) => {
+        setHitZoneVisibility(e.target.checked);
+        if (onlineMode && isHost && conn) {
+            conn.send({ type: 'toggle-hitzones', show: e.target.checked });
+        }
+    });
+}
+
   
-  
+function setHitZoneVisibility(show) {
+    scene.traverse(obj => {
+        if (obj instanceof THREE.Line) obj.visible = show;
+    });
+}
+
   
   
   function createZoneArc(startAngle, endAngle, height, color) {
@@ -1295,9 +1336,17 @@ function startLocal() {
             resetGame();
             pendingRestart = false;
         }
-        // Remove the old 'reset' handler if it exists
+        // ADD THIS BLOCK:
+        else if (data.type === 'toggle-hitzones') {
+            setHitZoneVisibility(data.show);
+            // Optionally update the checkbox if not host
+            const toggle = document.getElementById('toggle-hitzones');
+            if (toggle) toggle.checked = data.show;
+        }
     });
 }
+
+
 
   
 
