@@ -172,7 +172,7 @@ function init() {
     // Start game with countdown
     startCountdown();
     showLeaderboard();
-    if (!onlineMode || isHost) createHitZoneToggle();
+    if (!onlineMode || (onlineMode && isHost)) createHitZoneToggle();
 
 }
 
@@ -369,11 +369,12 @@ function addHitZoneMarkers() {
     toggleDiv.style.fontFamily = 'Arial, sans-serif';
 
     toggleDiv.innerHTML = `
-      <label style="font-size:18px;">
+    <label style="font-size:18px;">
         <input type="checkbox" id="toggle-hitzones" checked>
-        Show Hit Zones
-      </label>
+        Show Hit Zones (Controls for both players)
+    </label>
     `;
+
 
     document.body.appendChild(toggleDiv);
 
@@ -1312,6 +1313,13 @@ function startLocal() {
         conn.send({ type: 'name', name: playerName });
         if (isHost) {
             conn.send({ type: 'role-assign', role: 'blue' });
+            // Host sends initial toggle state to client
+            const toggle = document.getElementById('toggle-hitzones');
+            if (toggle) conn.send({ type: 'toggle-hitzones', show: toggle.checked });
+        } else {
+            // Remove the toggle UI if it exists (client should NOT have it)
+            const toggleDiv = document.getElementById('hit-zone-toggle');
+            if (toggleDiv) toggleDiv.parentNode.removeChild(toggleDiv);
         }
     });
 
@@ -1336,15 +1344,17 @@ function startLocal() {
             resetGame();
             pendingRestart = false;
         }
-        // ADD THIS BLOCK:
         else if (data.type === 'toggle-hitzones') {
             setHitZoneVisibility(data.show);
-            // Optionally update the checkbox if not host
-            const toggle = document.getElementById('toggle-hitzones');
-            if (toggle) toggle.checked = data.show;
+            // Only update the checkbox if host (clients shouldn't have it)
+            if (isHost) {
+                const toggle = document.getElementById('toggle-hitzones');
+                if (toggle) toggle.checked = data.show;
+            }
         }
     });
 }
+
 
 
 
