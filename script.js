@@ -1234,7 +1234,7 @@ function startLocal() {
       isHost = true;
       currentPlayerRole = 'red';
       updateScoreBoard();
-      document.getElementById('roomCode').value = id.slice(0, 6);
+      document.getElementById('roomCode').value = id;
     });
   
     peer.on('connection', (connection) => {
