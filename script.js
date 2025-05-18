@@ -1362,7 +1362,7 @@ function startLocal() {
     });
   }
   
-  let syncInterval;
+
 
 function setupConnection() {
     conn.on('open', () => {
