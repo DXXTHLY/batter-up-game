@@ -771,17 +771,20 @@ function processRedHit() {
     // In processRedHit():
     if (!redBallStarted) {
         if (zone === ZONE_HIT) {
-        redBallStarted = true;
-        gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
-        redBallSpeed = redBallBaseSpeed;
-        redDirection = -1;
-        redScore++;
-        redLastHitTime = currentTime;
-        playHitSound();
-        updateScoreBoard();
+            redBallStarted = true;
+            gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
+            redBallSpeed = redBallBaseSpeed;
+            redDirection = -1;
+            if (!onlineMode || isHost) {
+                redScore++;
+                updateScoreBoard();
+            }
+            redLastHitTime = currentTime;
+            playHitSound();
         }
         return;
     }
+    
     
     // Process different outcomes based on zones
     switch (zone) {
@@ -862,17 +865,20 @@ function processRedHit() {
 
     if (!blueBallStarted) {
         if (zone === ZONE_HIT) {
-          blueBallStarted = true;
-          gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
-          blueBallSpeed = blueBallBaseSpeed;
-          blueDirection = 1;
-          blueScore++;
-          blueLastHitTime = currentTime;
-          playHitSound();
-          updateScoreBoard();
+            blueBallStarted = true;
+            gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
+            blueBallSpeed = blueBallBaseSpeed;
+            blueDirection = 1;
+            if (!onlineMode || isHost) {
+                blueScore++;
+                updateScoreBoard();
+            }
+            blueLastHitTime = currentTime;
+            playHitSound();
         }
         return;
-      }
+    }
+    
     
     // Process different outcomes based on zones
     switch (zone) {
