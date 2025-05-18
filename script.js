@@ -440,8 +440,9 @@ function updateScoreBoard() {
         ${redName}: ${redScore} | ${blueName}: ${blueScore}
         <br>
         <span style="font-size: 16px;">
-            ${onlineMode ? `Room: ${peer.id.slice(0, 6)}` : 'Press R to Reset'}
+            ${onlineMode ? `Room: ${peer.id}` : 'Press R to Reset'}
         </span>
+
     `;
 
     // Update role display
