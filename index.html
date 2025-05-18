@@ -6,14 +6,20 @@
     <title>Batter Up! - It Takes Two Inspired Game</title>
     <style>
         body {
-            margin: 0;
-            overflow: hidden;
-            /* Add your background image below: */
-            background-image: url('https://media1.tenor.com/m/mY7yg8XYENoAAAAd/stare-dark.gif'); /* <-- Change to your image file or URL */
-            background-size: cover;
-            background-repeat: no-repeat;
-            background-position: center center;
-        }
+                margin: 0;
+                overflow: hidden;
+                background-image: url('https://media1.tenor.com/m/mY7yg8XYENoAAAAd/stare-dark.gif');
+                background-size: contain;           /* Show whole image, no cropping */
+                background-repeat: no-repeat;
+                background-position: center center;
+                background-color: #000;             /* Fills background if image doesn't cover */
+                height: 100vh;                      /* Ensure body fills viewport */
+                width: 100vw;
+            }
+            html {
+                height: 100%;
+                width: 100%;
+            }
         canvas { display: block; }
         #menu {
             position: absolute;
