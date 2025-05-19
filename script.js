@@ -1511,25 +1511,26 @@ function setupConnection() {
             // Store previous positions
             lastRedBallAngle = redBallAngle;
             lastBlueBallAngle = blueBallAngle;
-            
-            // Update target positions (don't set current angles directly)
-            targetRedBallAngle = data.gameState.redBallAngle;
-            targetBlueBallAngle = data.gameState.blueBallAngle;
-            
-            // Update other game state
-            redScore = data.gameState.redScore;
-            blueScore = data.gameState.blueScore;
-            redBallSpeed = data.gameState.redBallSpeed;
-            blueBallSpeed = data.gameState.blueBallSpeed;
-            redDirection = data.gameState.redDirection;
-            blueDirection = data.gameState.blueDirection;
-            redBallStarted = data.gameState.redBallStarted;
-            blueBallStarted = data.gameState.blueBallStarted;
-            gameTime = data.gameState.gameTime;
-            
+        
+            // Update target positions using the shortened keys sent by the host
+            targetRedBallAngle = data.ra;
+            targetBlueBallAngle = data.ba;
+        
+            // Update other game state using the same keys
+            redScore = data.rs;
+            blueScore = data.bs;
+            redBallSpeed = data.rs;
+            blueBallSpeed = data.bs;
+            redDirection = data.rd;
+            blueDirection = data.bd;
+            redBallStarted = data.rbs;
+            blueBallStarted = data.bbs;
+            gameTime = data.gt;
+        
             // Update visuals
             updateScoreBoard();
         }
+        
         
         function lerp(current, target, factor) {
             return current + (target - current) * factor;
