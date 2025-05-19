@@ -440,21 +440,32 @@ function addHitZoneMarkers() {
     const earlyColor = 0xff0000;  // Red (back zone)
     const hitColor = 0x00ff00;    // Green (middle zone)
     const missColor = 0xffff00;   // Yellow (front zone)
-  
-    // RED PLAYER ZONES (these are correct)
-    const redZoneHeight = 2.1;
+
+    // Heights for the three lines per zone (spread vertically)
+    const baseHeight = 2.1;
+    const lineSpacing = 0.08; // Adjust for more or less space between lines
+    const heights = [
+        baseHeight - lineSpacing,
+        baseHeight,
+        baseHeight + lineSpacing
+    ];
+
     const redArcLength = 0.3;
-    createZoneArc(Math.PI - redArcLength, Math.PI, redZoneHeight, missColor); // Yellow (front)
-    createZoneArc(Math.PI, Math.PI + redArcLength, redZoneHeight, hitColor);  // Green (middle)
-    createZoneArc(Math.PI + redArcLength, Math.PI + redArcLength*2, redZoneHeight, earlyColor); // Red (back)
-  
-    // BLUE PLAYER ZONES - SWAP COLORS TO MATCH RED SIDE ORDER
-    const blueZoneHeight = 2.1;
-    const blueArcLength = 0.3;
-    createZoneArc(blueArcLength*2, blueArcLength*3, blueZoneHeight, missColor);   // Yellow (front)
-    createZoneArc(blueArcLength, blueArcLength*2, blueZoneHeight, hitColor);      // Green (middle)
-    createZoneArc(0, blueArcLength, blueZoneHeight, earlyColor);                  // Red (back)
-    }
+    // RED PLAYER ZONES (left side)
+    heights.forEach(h => {
+        createZoneArc(Math.PI - redArcLength, Math.PI, h, missColor); // Yellow (front)
+        createZoneArc(Math.PI, Math.PI + redArcLength, h, hitColor);  // Green (middle)
+        createZoneArc(Math.PI + redArcLength, Math.PI + redArcLength*2, h, earlyColor); // Red (back)
+    });
+
+    // BLUE PLAYER ZONES (right side)
+    heights.forEach(h => {
+        createZoneArc(0 + redArcLength*2, 0 + redArcLength*3, h, missColor);   // Yellow (front)
+        createZoneArc(0 + redArcLength, 0 + redArcLength*2, h, hitColor);      // Green (middle)
+        createZoneArc(0, 0 + redArcLength, h, earlyColor);                     // Red (back)
+    });
+}
+
 
 
 
