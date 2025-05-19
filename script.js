@@ -441,23 +441,21 @@ function addHitZoneMarkers() {
     const hitColor = 0x00ff00;    // Green (middle zone)
     const missColor = 0xffff00;   // Yellow (front zone)
   
-    // RED PLAYER ZONES (left side)
+    // RED PLAYER ZONES (these are correct)
     const redZoneHeight = 2.1;
-    const arcLength = 0.3;
-    
-    // Red zones (left side)
-    createZoneArc(Math.PI - arcLength, Math.PI, redZoneHeight, missColor);         // Yellow (front)
-    createZoneArc(Math.PI, Math.PI + arcLength, redZoneHeight, hitColor);          // Green (middle)
-    createZoneArc(Math.PI + arcLength, Math.PI + arcLength*2, redZoneHeight, earlyColor); // Red (back)
+    const redArcLength = 0.3;
+    createZoneArc(Math.PI - redArcLength, Math.PI, redZoneHeight, missColor); // Yellow (front)
+    createZoneArc(Math.PI, Math.PI + redArcLength, redZoneHeight, hitColor);  // Green (middle)
+    createZoneArc(Math.PI + redArcLength, Math.PI + redArcLength*2, redZoneHeight, earlyColor); // Red (back)
   
-    // BLUE PLAYER ZONES (right side) - MIRROR THE ANGLES for horizontal alignment
-    const blueZoneHeight = 2.1; 
-    
-    // Blue zones (right side) - mirror the angles so they horizontally align with red
-    createZoneArc(-arcLength, 0, blueZoneHeight, missColor);              // Yellow (front)
-    createZoneArc(0, arcLength, blueZoneHeight, hitColor);                // Green (middle)
-    createZoneArc(arcLength, arcLength*2, blueZoneHeight, earlyColor);    // Red (back)
+    // BLUE PLAYER ZONES - SWAP COLORS TO MATCH RED SIDE ORDER
+    const blueZoneHeight = 2.1;
+    const blueArcLength = 0.3;
+    createZoneArc(blueArcLength*2, blueArcLength*3, blueZoneHeight, earlyColor); // Red (back) - SWAPPED
+    createZoneArc(blueArcLength, blueArcLength*2, blueZoneHeight, hitColor);     // Green (middle) - UNCHANGED
+    createZoneArc(0, blueArcLength, blueZoneHeight, missColor);                 // Yellow (front) - SWAPPED
 }
+
 
 
   
@@ -930,18 +928,20 @@ function processRedHit() {
     }
     
     // In processBlueHit():
-    let zone = null;
-    const arcLength = 0.3;  // This is already correct
+// In processBlueHit()
+let zone = null;
+const arcLength = 0.3;
 
-    if (angle >= arcLength*2 && angle < arcLength*3) {  // Use arcLength instead of blueArcLength
-        zone = ZONE_MISS; // Yellow (front)
-    } else if (angle >= arcLength && angle < arcLength*2) {
-        zone = ZONE_HIT; // Green (middle)
-    } else if (angle >= 0 && angle < arcLength) {
-        zone = ZONE_TOO_EARLY; // Red (back)
-    } else {
-        return; // No valid zone - add this to match the red side logic
-    }
+if (angle >= arcLength*2 && angle < arcLength*3) {
+    zone = ZONE_TOO_EARLY; // Red (back) - CHANGED FROM MISS TO TOO_EARLY
+} else if (angle >= arcLength && angle < arcLength*2) {
+    zone = ZONE_HIT; // Green (middle) - UNCHANGED
+} else if (angle >= 0 && angle < arcLength) {
+    zone = ZONE_MISS; // Yellow (front) - CHANGED FROM TOO_EARLY TO MISS
+} else {
+    return; // No valid zone
+}
+
 
       
     
