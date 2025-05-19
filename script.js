@@ -441,28 +441,37 @@ function addHitZoneMarkers() {
     const hitColor = 0x00ff00;    // Green (middle zone)
     const missColor = 0xffff00;   // Yellow (front zone)
 
-    // Heights for the three lines per zone (spread vertically)
-    const baseHeight = 2.1;
-    const lineSpacing = 0.08; // Adjust for more or less space between lines
-    const heights = [
-        baseHeight - lineSpacing,
-        baseHeight,
-        baseHeight + lineSpacing
+    // Heights for RED lines
+    const redBaseHeight = 2.1;
+    const lineSpacing = 0.08;
+    const redHeights = [
+        redBaseHeight - lineSpacing,
+        redBaseHeight,
+        redBaseHeight + lineSpacing
     ];
 
-    const redArcLength = 0.3;
+    // Heights for BLUE lines (lower than red)
+    const blueBaseHeight = 1.1; // <-- Lower this value to match blue ball height
+    const blueHeights = [
+        blueBaseHeight - lineSpacing,
+        blueBaseHeight,
+        blueBaseHeight + lineSpacing
+    ];
+
+    const arcLength = 0.3;
+    
     // RED PLAYER ZONES (left side)
-    heights.forEach(h => {
-        createZoneArc(Math.PI - redArcLength, Math.PI, h, missColor); // Yellow (front)
-        createZoneArc(Math.PI, Math.PI + redArcLength, h, hitColor);  // Green (middle)
-        createZoneArc(Math.PI + redArcLength, Math.PI + redArcLength*2, h, earlyColor); // Red (back)
+    redHeights.forEach(h => {
+        createZoneArc(Math.PI - arcLength, Math.PI, h, missColor); // Yellow (front)
+        createZoneArc(Math.PI, Math.PI + arcLength, h, hitColor);  // Green (middle)
+        createZoneArc(Math.PI + arcLength, Math.PI + arcLength*2, h, earlyColor); // Red (back)
     });
 
-    // BLUE PLAYER ZONES (right side)
-    heights.forEach(h => {
-        createZoneArc(0 + redArcLength*2, 0 + redArcLength*3, h, missColor);   // Yellow (front)
-        createZoneArc(0 + redArcLength, 0 + redArcLength*2, h, hitColor);      // Green (middle)
-        createZoneArc(0, 0 + redArcLength, h, earlyColor);                     // Red (back)
+    // BLUE PLAYER ZONES (right side) - using lower heights
+    blueHeights.forEach(h => {
+        createZoneArc(0 + arcLength*2, 0 + arcLength*3, h, missColor);   // Yellow (front)
+        createZoneArc(0 + arcLength, 0 + arcLength*2, h, hitColor);      // Green (middle)
+        createZoneArc(0, 0 + arcLength, h, earlyColor);                  // Red (back)
     });
 }
 
