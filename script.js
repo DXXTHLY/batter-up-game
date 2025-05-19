@@ -445,12 +445,12 @@ function addHitZoneMarkers() {
     createZoneArc(Math.PI + redArcLength, Math.PI + redArcLength*2, redZoneHeight, earlyColor); // Red (back)
   
     // BLUE PLAYER ZONES (swap yellow and red so yellow is front, red is back)
-    const blueZoneHeight = 2.1;
+    const blueZoneHeight = 2.1; // <-- Set to match the red zone height!
     const blueArcLength = 0.3;
-    // Fixed (yellow and red swapped)
     createZoneArc(blueArcLength*2, blueArcLength*3, blueZoneHeight, missColor); // Yellow (front)
     createZoneArc(blueArcLength, blueArcLength*2, blueZoneHeight, hitColor);     // Green (middle)
     createZoneArc(0, blueArcLength, blueZoneHeight, earlyColor);                 // Red (back)
+    
   }
   
   
