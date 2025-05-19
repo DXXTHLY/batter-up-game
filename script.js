@@ -451,10 +451,10 @@ function addHitZoneMarkers() {
     // BLUE PLAYER ZONES - SWAP COLORS TO MATCH RED SIDE ORDER
     const blueZoneHeight = 2.1;
     const blueArcLength = 0.3;
-    createZoneArc(blueArcLength*2, blueArcLength*3, blueZoneHeight, earlyColor); // Red (back) - SWAPPED
-    createZoneArc(blueArcLength, blueArcLength*2, blueZoneHeight, hitColor);     // Green (middle) - UNCHANGED
-    createZoneArc(0, blueArcLength, blueZoneHeight, missColor);                 // Yellow (front) - SWAPPED
-}
+    createZoneArc(blueArcLength*2, blueArcLength*3, blueZoneHeight, missColor);   // Yellow (front)
+    createZoneArc(blueArcLength, blueArcLength*2, blueZoneHeight, hitColor);      // Green (middle)
+    createZoneArc(0, blueArcLength, blueZoneHeight, earlyColor);                  // Red (back)
+    }
 
 
 
@@ -928,20 +928,18 @@ function processRedHit() {
     }
     
     // In processBlueHit():
-// In processBlueHit()
-let zone = null;
-const arcLength = 0.3;
+    let zone = null;
+    const arcLength = 0.3;  // This is already correct
 
-if (angle >= arcLength*2 && angle < arcLength*3) {
-    zone = ZONE_TOO_EARLY; // Red (back) - CHANGED FROM MISS TO TOO_EARLY
-} else if (angle >= arcLength && angle < arcLength*2) {
-    zone = ZONE_HIT; // Green (middle) - UNCHANGED
-} else if (angle >= 0 && angle < arcLength) {
-    zone = ZONE_MISS; // Yellow (front) - CHANGED FROM TOO_EARLY TO MISS
-} else {
-    return; // No valid zone
-}
-
+    if (angle >= arcLength*2 && angle < arcLength*3) {  // Use arcLength instead of blueArcLength
+        zone = ZONE_MISS; // Yellow (front)
+    } else if (angle >= arcLength && angle < arcLength*2) {
+        zone = ZONE_HIT; // Green (middle)
+    } else if (angle >= 0 && angle < arcLength) {
+        zone = ZONE_TOO_EARLY; // Red (back)
+    } else {
+        return; // No valid zone - add this to match the red side logic
+    }
 
       
     
