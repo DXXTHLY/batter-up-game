@@ -340,6 +340,10 @@ function showLeaderboard() {
     
 }
 
+const blueArcCenter = 0; // Centered at 0 radians (right side)
+createZoneArc(blueArcCenter - redArcLength, blueArcCenter, blueZoneHeight, missColor);
+createZoneArc(blueArcCenter, blueArcCenter + redArcLength, blueZoneHeight, hitColor);
+createZoneArc(blueArcCenter + redArcLength, blueArcCenter + redArcLength*2, blueZoneHeight, earlyColor);
 
 
 
@@ -436,22 +440,22 @@ function addHitZoneMarkers() {
     const earlyColor = 0xff0000;  // Red (back zone)
     const hitColor = 0x00ff00;    // Green (middle zone)
     const missColor = 0xffff00;   // Yellow (front zone)
-  
-    // RED PLAYER ZONES (these are correct)
+
+    // RED PLAYER ZONES (left side, centered at Math.PI)
     const redZoneHeight = 2.1;
-    const redArcLength = 0.3;
-    createZoneArc(Math.PI - redArcLength, Math.PI, redZoneHeight, missColor); // Yellow (front)
-    createZoneArc(Math.PI, Math.PI + redArcLength, redZoneHeight, hitColor);  // Green (middle)
-    createZoneArc(Math.PI + redArcLength, Math.PI + redArcLength*2, redZoneHeight, earlyColor); // Red (back)
-  
-    // BLUE PLAYER ZONES (swap yellow and red so yellow is front, red is back)
-    const blueZoneHeight = 2.1; // <-- Set to match the red zone height!
-    const blueArcLength = 0.3;
-    createZoneArc(blueArcLength*2, blueArcLength*3, blueZoneHeight, missColor); // Yellow (front)
-    createZoneArc(blueArcLength, blueArcLength*2, blueZoneHeight, hitColor);     // Green (middle)
-    createZoneArc(0, blueArcLength, blueZoneHeight, earlyColor);                 // Red (back)
-    
-  }
+    const arcLength = 0.3;
+    createZoneArc(Math.PI - arcLength, Math.PI, redZoneHeight, missColor); // Yellow (front)
+    createZoneArc(Math.PI, Math.PI + arcLength, redZoneHeight, hitColor);  // Green (middle)
+    createZoneArc(Math.PI + arcLength, Math.PI + arcLength*2, redZoneHeight, earlyColor); // Red (back)
+
+    // BLUE PLAYER ZONES (right side, centered at 0, mirrored)
+    const blueZoneHeight = 2.1;
+    // Mirror the red arcs to the right side
+    createZoneArc(0 - arcLength, 0, blueZoneHeight, missColor); // Yellow (front)
+    createZoneArc(0, 0 + arcLength, blueZoneHeight, hitColor);  // Green (middle)
+    createZoneArc(0 + arcLength, 0 + arcLength*2, blueZoneHeight, earlyColor); // Red (back)
+}
+
   
   
   function createHitZoneToggle() {
