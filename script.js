@@ -451,7 +451,7 @@ function addHitZoneMarkers() {
     ];
 
     // Heights for BLUE lines (lower than red)
-    const blueBaseHeight = 1.1; // <-- Lower this value to match blue ball height
+    const blueBaseHeight = 1.0; // <-- Lower this value to match blue ball height
     const blueHeights = [
         blueBaseHeight - lineSpacing,
         blueBaseHeight,
