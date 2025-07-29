@@ -6,114 +6,118 @@
     <title>Beat Your Balls</title>
     <style>
         body {
-                margin: 0;
-                overflow: hidden;
-                background-image: url('https://media1.tenor.com/m/mY7yg8XYENoAAAAd/stare-dark.gif');
-                background-size: contain;           /* Show whole image, no cropping */
-                background-repeat: no-repeat;
-                background-position: center center;
-                background-color: #000;             /* Fills background if image doesn't cover */
-                height: 100vh;                      /* Ensure body fills viewport */
-                width: 100vw;
-            }
-            html {
-                height: 100%;
-                width: 100%;
-            }
-        canvas { display: block; }
-        #menu {
+            margin: 0;
+            overflow: hidden;
+            background-image: url('https://media1.tenor.com/m/mY7yg8XYENoAAAAd/stare-dark.gif');
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center center;
+            background-color: #000;
+            height: 100vh;
+            width: 100vw;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        html {
+            height: 100%;
+            width: 100%;
+        }
+        canvas { 
+            display: block; 
+        }
+
+        /* --- Menu Styling --- */
+        .menu-container {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8);
-            padding: 20px;
-            border-radius: 10px;
+            background: rgba(10, 10, 20, 0.85);
+            padding: 25px 35px;
+            border-radius: 15px;
+            border: 1px solid rgba(100, 100, 255, 0.5);
             text-align: center;
             color: white;
             z-index: 1000;
+            box-shadow: 0 0 20px rgba(100, 100, 255, 0.3);
+            width: 300px;
         }
-        #menu button {
+        .menu-container h1 {
+            color: #ccf;
+            text-shadow: 0 0 10px #88f;
+            margin-top: 0;
+        }
+        .menu-container button {
             display: block;
-            margin: 10px auto;
-            padding: 10px 20px;
+            width: 100%;
+            margin: 12px auto;
+            padding: 12px 20px;
             font-size: 18px;
             cursor: pointer;
+            border-radius: 8px;
+            border: 1px solid #557;
+            background: linear-gradient(to bottom, #4a4a6a, #3a3a5a);
+            color: white;
+            font-weight: bold;
+            transition: all 0.2s ease;
         }
-        #onlineMenu input {
+        .menu-container button:hover {
+            background: linear-gradient(to bottom, #5a5a7a, #4a4a6a);
+            border-color: #779;
+            box-shadow: 0 0 15px rgba(150, 150, 255, 0.4);
+        }
+        .menu-container input {
             display: block;
+            width: calc(100% - 22px);
             margin: 10px auto;
-            padding: 5px;
-            width: 200px;
-        }
-        #scoreBoard {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            background: rgba(0,0,0,0.7);
             padding: 10px;
-            text-align: center;
-            font-family: Arial;
-            z-index: 100;
-        }
-        #role-display {
-            position: absolute;
-            top: 70px;
-            left: 10px;
-            color: white;
-            background: rgba(0,0,0,0.5);
-            padding: 8px;
             border-radius: 5px;
-            z-index: 100;
+            border: 1px solid #557;
+            background: #223;
+            color: white;
+            font-size: 16px;
         }
     </style>
 </head>
 <body>
-    <!-- Game Menu -->
-    <div id="menu">
+    <!-- Main Menu -->
+    <div id="mainMenu" class="menu-container">
         <h1>WHO GOES THERE!?</h1>
-        <button onclick="startLocal()">Local Multiplayer</button>
-        <button onclick="showOnlineMenu()">Online Multiplayer</button>
-        <div id="onlineMenu" style="display: none;">
-            <input type="text" id="playerName" placeholder="Your Name">
-            <button onclick="createRoom()">Create Private Room</button>
-            <br>
-            <input type="text" id="roomCode" placeholder="Enter Room Code">
-            <button onclick="joinRoom()">Join Room</button>
-        </div>
+        <button id="startLocalBtn">Local Multiplayer</button>
+        <button id="showOnlineBtn">Online Multiplayer</button>
     </div>
 
-    <!-- Score Board -->
-    <div id="scoreBoard"></div>
-
-    <!-- Role Display -->
-    <div id="role-display">Mode: Local Play</div>
-
-    <!-- Host Settings Menu -->
-    <div id="settingsMenu" style="display: none; position: fixed; bottom: 90px; left: 30px; background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; z-index: 1000;">
-        <h3 style="margin-top: 0;">Host Settings</h3>
-        <div>
-            <label>Base Speed: <input type="number" id="baseSpeed" step="0.001" value="0.01"></label>
-            <input type="range" id="baseSpeedRange" min="0.005" max="0.03" step="0.001" value="0.01">
-        </div>
-        <div>
-            <label>Speed Increment: <input type="number" id="speedInc" step="0.001" value="0.004"></label>
-            <input type="range" id="speedIncRange" min="0.001" max="0.01" step="0.001" value="0.004">
-        </div>
-        <div>
-            <label>Max Speed: <input type="number" id="maxSpeed" step="0.01" value="0.10"></label>
-            <input type="range" id="maxSpeedRange" min="0.05" max="0.2" step="0.01" value="0.10">
-        </div>
-        <button onclick="applySettings()" style="margin-top: 10px;">Apply to All Players</button>
+    <!-- Online Menu -->
+    <div id="onlineMenu" class="menu-container" style="display: none;">
+        <h2>Online Play</h2>
+        <input type="text" id="playerNameInput" placeholder="Your Name">
+        <button id="createRoomBtn">Create Private Room</button>
+        <hr style="border-color: #444; margin: 20px 0;">
+        <input type="text" id="roomCodeInput" placeholder="Enter Room Code">
+        <button id="joinRoomBtn">Join Room</button>
+        <button id="backToMainBtn" style="background: #5a3a3a;">Back</button>
     </div>
 
-    <!-- Dependencies -->
+    <!-- The game script will create the rest of the UI (scoreboard, etc.) -->
+
+    <!-- ================================================================= -->
+    <!--                       REQUIRED SCRIPT FILES                       -->
+    <!-- ================================================================= -->
+
+    <!-- Main Three.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <!-- PeerJS for Networking -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     
-    <!-- Game Script -->
+    <!-- ADD-ONS FOR POST-PROCESSING (BLOOM/GLOW EFFECT) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    
+    <!-- Your final game script will go here -->
     <script src="script.js"></script>
+
 </body>
 </html>
