@@ -2,31 +2,30 @@
 //  GAME CONSTANTS
 // =============================================================================
 const CONSTANTS = {
-    // Gameplay Settings (Matches "It Takes Two")
+    // Gameplay Settings
     GAME_DURATION_S: 60,
     COUNTDOWN_S: 3,
 
-    // Physics & Difficulty
+    // Physics & Difficulty (The "It Takes Two" feel)
     ORBIT_RADIUS: 3,
-    BASE_SPEED: 0.03,        // Starts slow/manageable
+    BASE_SPEED: 0.03,        // Starts slow
     SPEED_INCREMENT: 0.006,  // Speed gained per hit
-    MAX_SPEED: 0.35,         // Cap to prevent glitching
+    MAX_SPEED: 0.35,         // Maximum speed cap
     
     // Penalties
     MISS_COOLDOWN_MS: 800,   // Time input is disabled after a miss
-    MISS_SPEED_RESET: true,  // Missing kills your momentum
+    MISS_SPEED_RESET: true,  // Missing kills your momentum (Resets speed)
 
     // Hit Detection
     HIT_TOLERANCE: 0.6,      // Width of the hit window (in radians)
     
-    // Player Positions (Angles in Radians)
-    RED_PLAYER_ANGLE: Math.PI, // 180 degrees (Left side)
-    BLUE_PLAYER_ANGLE: 0,      // 0 degrees (Right side)
+    // Player Positions
+    RED_PLAYER_ANGLE: Math.PI, // Left side
+    BLUE_PLAYER_ANGLE: 0,      // Right side
     
     // Visuals
     RED_BALL_HEIGHT: 2.0,
-    BLUE_BALL_HEIGHT: 1.2,   // Slightly offset so they don't clip
-    SWING_DURATION_MS: 150,  // Fast, snappy swing
+    BLUE_BALL_HEIGHT: 1.2,
     BLOOM_PARAMS: { strength: 1.5, radius: 0.4, threshold: 0.7 },
 };
 
@@ -37,127 +36,177 @@ const gameElements = {
     scene: null, camera: null, renderer: null, composer: null,
     ui: {}, three: {}, activeParticles: [],
     cameraShake: { intensity: 0, decay: 0.95 },
-    audio: {} // Placeholder for audio objects
 };
 
-let gameState = {};
-let animationFrameId = null;
-
-function resetGameState() {
-    gameState = {
-        isGameActive: false,
-        isCountdownActive: false,
-        gameTime: CONSTANTS.GAME_DURATION_S,
-        
-        // Red Player State
-        red: { 
-            score: 0, 
-            ballAngle: CONSTANTS.RED_PLAYER_ANGLE + 0.5, 
-            ballSpeed: CONSTANTS.BASE_SPEED, 
-            direction: -1, // Clockwise
-            cooldownTimer: 0, 
-            isBatExtended: false,
-            swingTimer: 0
-        },
-        
-        // Blue Player State
-        blue: { 
-            score: 0, 
-            ballAngle: CONSTANTS.BLUE_PLAYER_ANGLE - 0.5, 
-            ballSpeed: CONSTANTS.BASE_SPEED, 
-            direction: 1,  // Counter-Clockwise
-            cooldownTimer: 0,
-            isBatExtended: false,
-            swingTimer: 0
-        }
-    };
+let gameState = {
+    isGameActive: false,     // Is the gameplay actually happening?
+    isMenuOpen: true,        // Are we in the main menu?
+    gameTime: CONSTANTS.GAME_DURATION_S,
     
-    // UI Reset
-    updateScoreUI();
-    const timerEl = document.getElementById('timer');
-    if(timerEl) timerEl.innerText = CONSTANTS.GAME_DURATION_S;
-}
+    // Player Data
+    red: { 
+        score: 0, 
+        ballAngle: CONSTANTS.RED_PLAYER_ANGLE + 0.5, 
+        ballSpeed: CONSTANTS.BASE_SPEED, 
+        direction: -1, 
+        cooldownTimer: 0, 
+        swingTimer: 0 
+    },
+    blue: { 
+        score: 0, 
+        ballAngle: CONSTANTS.BLUE_PLAYER_ANGLE - 0.5, 
+        ballSpeed: CONSTANTS.BASE_SPEED, 
+        direction: 1, 
+        cooldownTimer: 0, 
+        swingTimer: 0 
+    }
+};
+
+let animationFrameId = null;
+let gameIntervalId = null; // Stores the timer interval
 
 // =============================================================================
-//  INITIALIZATION
+//  INITIALIZATION & MENU LOGIC
 // =============================================================================
 function init() {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     
-    // Cleanup old canvas
+    // Cleanup old canvas if it exists
     const oldCanvas = document.querySelector('canvas');
     if (oldCanvas) oldCanvas.remove();
 
-    resetGameState();
     setupScene();
     setupLighting();
     setupPostProcessing();
     createGameObjects();
     setupInputs();
-    
-    // Start loop
+    setupUIEvents(); // Connect the buttons!
+
+    // Start the render loop (renders background/idle state)
     animate();
+}
+
+function setupUIEvents() {
+    // Connect "Local Multiplayer" Button
+    const localBtn = document.getElementById('startLocalBtn');
+    if (localBtn) {
+        localBtn.addEventListener('click', () => {
+            console.log("Local Button Clicked");
+            startLocalGame();
+        });
+    }
+
+    // Connect "Online Multiplayer" Button (Placeholder for now)
+    const onlineBtn = document.getElementById('showOnlineBtn');
+    if (onlineBtn) {
+        onlineBtn.addEventListener('click', () => {
+            alert("Online mode requires a server setup. Playing Local for now!");
+            startLocalGame();
+        });
+    }
+}
+
+// =============================================================================
+//  GAME FLOW CONTROL
+// =============================================================================
+
+function startLocalGame() {
+    // 1. Hide Menu UI
+    const menu = document.getElementById('mainMenu'); // Assuming your ID is 'mainMenu' or similar container
+    if (menu) menu.style.display = 'none';
     
-    // Automatically start countdown for demo purposes (or hook to a button)
+    // Also hide the title card if it's separate
+    const title = document.querySelector('.title-card'); 
+    if (title) title.style.display = 'none';
+
+    // 2. Reset Variables
+    resetGameVariables();
+
+    // 3. Start Countdown
     startCountdown();
 }
 
+function resetGameVariables() {
+    gameState.isGameActive = false;
+    gameState.gameTime = CONSTANTS.GAME_DURATION_S;
+    gameState.red.score = 0;
+    gameState.blue.score = 0;
+    gameState.red.ballSpeed = CONSTANTS.BASE_SPEED;
+    gameState.blue.ballSpeed = CONSTANTS.BASE_SPEED;
+    gameState.red.ballAngle = CONSTANTS.RED_PLAYER_ANGLE + 0.5;
+    gameState.blue.ballAngle = CONSTANTS.BLUE_PLAYER_ANGLE - 0.5;
+
+    // Reset UI text
+    updateScoreUI();
+    const timerEl = document.getElementById('timer');
+    if(timerEl) timerEl.innerText = CONSTANTS.GAME_DURATION_S;
+}
+
 function startCountdown() {
-    gameState.isCountdownActive = true;
     let count = CONSTANTS.COUNTDOWN_S;
     
+    // Optional: Show a countdown UI text here if you have an element for it
+    console.log("Game starting in " + count);
+
     const countInterval = setInterval(() => {
-        // Here you would update a UI element for "3, 2, 1"
-        console.log("Starting in: " + count);
         count--;
+        console.log("..." + count);
         
         if (count < 0) {
             clearInterval(countInterval);
-            gameState.isCountdownActive = false;
-            gameState.isGameActive = true;
-            startGameTimer();
+            startGameplay();
         }
     }, 1000);
 }
 
-function startGameTimer() {
-    const timerInterval = setInterval(() => {
-        if (!gameState.isGameActive) {
-            clearInterval(timerInterval);
-            return;
-        }
-        
+function startGameplay() {
+    gameState.isGameActive = true;
+    
+    // Start the 60s timer
+    if (gameIntervalId) clearInterval(gameIntervalId);
+    gameIntervalId = setInterval(() => {
+        if (!gameState.isGameActive) return;
+
         gameState.gameTime--;
         const timerEl = document.getElementById('timer');
         if(timerEl) timerEl.innerText = gameState.gameTime;
 
         if (gameState.gameTime <= 0) {
             endGame();
-            clearInterval(timerInterval);
         }
     }, 1000);
 }
 
 function endGame() {
     gameState.isGameActive = false;
-    let winner = gameState.red.score > gameState.blue.score ? "RED WINS!" : 
-                 gameState.blue.score > gameState.red.score ? "BLUE WINS!" : "DRAW!";
-    alert("GAME OVER: " + winner);
+    clearInterval(gameIntervalId);
+
+    let winnerText = "";
+    if (gameState.red.score > gameState.blue.score) winnerText = "RED WINS!";
+    else if (gameState.blue.score > gameState.red.score) winnerText = "BLUE WINS!";
+    else winnerText = "IT'S A DRAW!";
+
+    alert("GAME OVER\n" + winnerText);
+    
+    // Show menu again
+    const menu = document.getElementById('mainMenu');
+    if (menu) menu.style.display = 'block'; // Or 'flex' depending on your CSS
 }
 
 // =============================================================================
-//  MAIN LOOP
+//  MAIN RENDER LOOP
 // =============================================================================
 function animate() {
     animationFrameId = requestAnimationFrame(animate);
-
     const delta = 0.016; // Approx 60fps
 
+    // Only move balls if game is active
     if (gameState.isGameActive) {
         updateBallPhysics();
-        updateSwings(delta);
     }
-
+    
+    // Always update visuals (particles, camera shake, swing animations)
+    updateSwings(delta);
     updateParticles(delta);
     updateCameraShake();
 
@@ -169,28 +218,23 @@ function animate() {
 }
 
 // =============================================================================
-//  PHYSICS & LOGIC (THE CORE MECHANICS)
+//  PHYSICS & INPUT LOGIC
 // =============================================================================
 
 function updateBallPhysics() {
-    // Move Red Ball
     moveBall(gameState.red, gameElements.three.redBall);
-    // Move Blue Ball
     moveBall(gameState.blue, gameElements.three.blueBall);
 }
 
 function moveBall(playerState, ballMesh) {
-    // 1. Apply Velocity
     playerState.ballAngle += playerState.ballSpeed * playerState.direction;
 
-    // 2. Normalize Angle (0 to 2PI)
+    // Keep angle between 0 and 360 (2PI)
     if (playerState.ballAngle > Math.PI * 2) playerState.ballAngle -= Math.PI * 2;
     if (playerState.ballAngle < 0) playerState.ballAngle += Math.PI * 2;
 
-    // 3. Update Visuals
     updateBallPosition(ballMesh, playerState.ballAngle, ballMesh.position.y);
 
-    // 4. Cooldown Tick (The "Stun" timer)
     if (playerState.cooldownTimer > 0) {
         playerState.cooldownTimer -= 16;
     }
@@ -201,45 +245,34 @@ function handleInput(playerKey) {
 
     const isRed = playerKey === 'red';
     const playerState = isRed ? gameState.red : gameState.blue;
-    const playerBat = isRed ? gameElements.three.redBat : gameElements.three.blueBat;
     const targetAngle = isRed ? CONSTANTS.RED_PLAYER_ANGLE : CONSTANTS.BLUE_PLAYER_ANGLE;
 
-    // 1. Check Cooldown (Prevents Spamming)
-    if (playerState.cooldownTimer > 0) return;
+    if (playerState.cooldownTimer > 0) return; // Still stunned from a miss
 
-    // 2. Trigger Visual Swing
+    // Trigger visual swing
     triggerSwingAnimation(playerState);
 
-    // 3. Check Hit Accuracy
-    // Calculate distance between Ball Angle and Player Angle
+    // Calculate Hit
     let angleDiff = Math.abs(getShortestAngleDistance(playerState.ballAngle, targetAngle));
 
     if (angleDiff <= CONSTANTS.HIT_TOLERANCE) {
-        // --- SUCCESSFUL HIT ---
+        // --- HIT ---
         playerState.score++;
         updateScoreUI();
-
-        // Speed Ramp Up
-        playerState.ballSpeed = Math.min(
-            playerState.ballSpeed + CONSTANTS.SPEED_INCREMENT, 
-            CONSTANTS.MAX_SPEED
-        );
-
-        // Feedback
-        createExplosion(isRed);
-        addCameraShake(0.3); // Screenshake
-        console.log(`${playerKey} HIT! Speed: ${playerState.ballSpeed.toFixed(3)}`);
-    } else {
-        // --- MISS / WHIFF ---
-        // Punishment: Reset speed and stun player
-        playerState.ballSpeed = CONSTANTS.BASE_SPEED;
-        playerState.cooldownTimer = CONSTANTS.MISS_COOLDOWN_MS;
         
-        console.log(`${playerKey} MISSED! Speed Reset.`);
+        // Increase Speed
+        playerState.ballSpeed = Math.min(playerState.ballSpeed + CONSTANTS.SPEED_INCREMENT, CONSTANTS.MAX_SPEED);
+        
+        // Effects
+        createExplosion(isRed);
+        addCameraShake(0.3);
+    } else {
+        // --- MISS ---
+        playerState.ballSpeed = CONSTANTS.BASE_SPEED; // Reset speed
+        playerState.cooldownTimer = CONSTANTS.MISS_COOLDOWN_MS; // Stun
     }
 }
 
-// Math Helper: circular distance
 function getShortestAngleDistance(a, b) {
     let diff = (b - a + Math.PI) % (2 * Math.PI) - Math.PI;
     return diff < -Math.PI ? diff + 2 * Math.PI : diff;
@@ -251,7 +284,6 @@ function getShortestAngleDistance(a, b) {
 function setupScene() {
     gameElements.scene = new THREE.Scene();
     gameElements.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    // Camera Positioned to see both players clearly
     gameElements.camera.position.set(0, 6, 11); 
     gameElements.camera.lookAt(0, 2, 0);
 
@@ -273,7 +305,6 @@ function setupLighting() {
 }
 
 function setupPostProcessing() {
-    // Basic setup if EffectComposer is available in your lib
     if (typeof THREE.EffectComposer !== 'undefined') {
         const renderScene = new THREE.RenderPass(gameElements.scene, gameElements.camera);
         const bloomPass = new THREE.UnrealBloomPass(
@@ -289,27 +320,25 @@ function setupPostProcessing() {
 }
 
 function createGameObjects() {
-    // 1. The Central Pole
+    // Pole
     const poleGeo = new THREE.CylinderGeometry(0.2, 0.2, 5, 16);
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
     gameElements.three.pole = new THREE.Mesh(poleGeo, poleMat);
     gameElements.three.pole.position.y = 2.5;
     gameElements.scene.add(gameElements.three.pole);
 
-    // 2. Balls
+    // Balls
     const ballGeo = new THREE.SphereGeometry(0.3, 32, 32);
     
-    // Red Ball
     gameElements.three.redBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x550000 }));
     gameElements.three.redBall.position.y = CONSTANTS.RED_BALL_HEIGHT;
-    gameElements.scene.add(gameElements.three.redBall);
-
-    // Blue Ball
+    
     gameElements.three.blueBall = new THREE.Mesh(ballGeo, new THREE.MeshStandardMaterial({ color: 0x3333ff, emissive: 0x000055 }));
     gameElements.three.blueBall.position.y = CONSTANTS.BLUE_BALL_HEIGHT;
-    gameElements.scene.add(gameElements.three.blueBall);
+    
+    gameElements.scene.add(gameElements.three.redBall, gameElements.three.blueBall);
 
-    // 3. Players (Simple Cylinders with Bats)
+    // Players
     createPlayerMesh('red');
     createPlayerMesh('blue');
 }
@@ -317,12 +346,9 @@ function createGameObjects() {
 function createPlayerMesh(color) {
     const isRed = color === 'red';
     const group = new THREE.Group();
-    
-    // Position players on opposite sides
     group.position.x = isRed ? -CONSTANTS.ORBIT_RADIUS - 1 : CONSTANTS.ORBIT_RADIUS + 1;
-    group.rotation.y = isRed ? Math.PI / 2 : -Math.PI / 2; // Face center
+    group.rotation.y = isRed ? Math.PI / 2 : -Math.PI / 2; 
 
-    // Body
     const body = new THREE.Mesh(
         new THREE.CylinderGeometry(0.5, 0.5, 2, 12),
         new THREE.MeshStandardMaterial({ color: isRed ? 0xaa0000 : 0x0000aa })
@@ -330,22 +356,17 @@ function createPlayerMesh(color) {
     body.position.y = 1;
     group.add(body);
 
-    // Bat Pivot
     const batGroup = new THREE.Group();
-    batGroup.position.set(0, 1.2, 0.5); // Hold bat in front
-    
-    // Bat Mesh
+    batGroup.position.set(0, 1.2, 0.5);
     const batMesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.1, 0.1, 1.5),
         new THREE.MeshStandardMaterial({ color: 0xdddddd })
     );
-    batMesh.position.z = 0.75; // Offset so it rotates from handle
+    batMesh.position.z = 0.75; 
     batGroup.add(batMesh);
     
     group.add(batGroup);
     gameElements.scene.add(group);
-
-    // Save reference for animation
     gameElements.three[color + 'Bat'] = batGroup;
 }
 
@@ -356,52 +377,33 @@ function updateBallPosition(mesh, angle, height) {
 }
 
 // =============================================================================
-//  ANIMATIONS & VISUALS
+//  ANIMATION HELPERS
 // =============================================================================
-
 function triggerSwingAnimation(playerState) {
-    playerState.swingTimer = 1.0; // Reset swing lerp
+    playerState.swingTimer = 1.0;
 }
 
 function updateSwings(delta) {
-    // Simple logic to rotate bat based on timer
     ['red', 'blue'].forEach(key => {
         const state = gameState[key];
         const bat = gameElements.three[key + 'Bat'];
-        
-        if (state.swingTimer > 0) {
-            state.swingTimer -= delta * 5; // Speed of swing
-            // Rotation logic: Swing forward then back
+        if (bat && state.swingTimer > 0) {
+            state.swingTimer -= delta * 5;
             const rotation = Math.sin(state.swingTimer * Math.PI) * 2.0; 
-            bat.rotation.y = -rotation; // Swing outward
-        } else {
-            bat.rotation.y = 0; // Reset
+            bat.rotation.y = -rotation;
+        } else if (bat) {
+            bat.rotation.y = 0;
         }
     });
 }
 
 function createExplosion(isRed) {
-    // Simple particle spawner
     const color = isRed ? 0xff0000 : 0x0000ff;
     const pos = isRed ? gameElements.three.redBall.position : gameElements.three.blueBall.position;
-    
-    for(let i=0; i<10; i++) {
-        const pGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-        const pMat = new THREE.MeshBasicMaterial({ color: color });
-        const p = new THREE.Mesh(pGeo, pMat);
-        
+    for(let i=0; i<8; i++) {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: color }));
         p.position.copy(pos);
-        
-        // Random velocity
-        p.userData = {
-            vel: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.2,
-                (Math.random() - 0.5) * 0.2,
-                (Math.random() - 0.5) * 0.2
-            ),
-            life: 1.0
-        };
-        
+        p.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2), life: 1.0 };
         gameElements.scene.add(p);
         gameElements.activeParticles.push(p);
     }
@@ -413,8 +415,7 @@ function updateParticles(delta) {
         p.userData.life -= delta;
         p.position.add(p.userData.vel);
         p.rotation.x += 0.1;
-        p.scale.setScalar(p.userData.life); // Shrink over time
-
+        p.scale.setScalar(p.userData.life);
         if (p.userData.life <= 0) {
             gameElements.scene.remove(p);
             gameElements.activeParticles.splice(i, 1);
@@ -428,15 +429,9 @@ function addCameraShake(amount) {
 
 function updateCameraShake() {
     if (gameElements.cameraShake.intensity > 0) {
-        const rx = (Math.random() - 0.5) * gameElements.cameraShake.intensity;
-        const ry = (Math.random() - 0.5) * gameElements.cameraShake.intensity;
-        
-        // Apply offset to base camera position
-        gameElements.camera.position.x = rx;
-        gameElements.camera.position.y = 6 + ry; // Base Y is 6
-        
-        // Decay
-        gameElements.cameraShake.intensity *= gameElements.cameraShake.decay;
+        gameElements.camera.position.x = (Math.random() - 0.5) * gameElements.cameraShake.intensity;
+        gameElements.camera.position.y = 6 + (Math.random() - 0.5) * gameElements.cameraShake.intensity;
+        gameElements.cameraShake.intensity *= 0.9;
         if (gameElements.cameraShake.intensity < 0.01) gameElements.cameraShake.intensity = 0;
     }
 }
@@ -448,27 +443,20 @@ function updateScoreUI() {
     if(scoreBlue) scoreBlue.innerText = gameState.blue.score;
 }
 
-// =============================================================================
-//  INPUT LISTENERS
-// =============================================================================
 function setupInputs() {
     window.addEventListener('keydown', (e) => {
-        // Red Player (Left Side) - Keys: A, S, Left Shift
-        if (['KeyA', 'KeyS', 'ShiftLeft'].includes(e.code)) {
-            handleInput('red');
-        }
-
-        // Blue Player (Right Side) - Keys: Arrows, Enter
-        if (['ArrowRight', 'ArrowDown', 'Enter'].includes(e.code)) {
-            handleInput('blue');
-        }
-        
-        // Restart (R key)
-        if (e.code === 'KeyR') {
-            init();
-        }
+        if (!gameState.isGameActive) return;
+        if (['KeyA', 'KeyS', 'ShiftLeft'].includes(e.code)) handleInput('red');
+        if (['ArrowRight', 'ArrowDown', 'Enter'].includes(e.code)) handleInput('blue');
+    });
+    // Handle Window Resize
+    window.addEventListener('resize', () => {
+        gameElements.camera.aspect = window.innerWidth / window.innerHeight;
+        gameElements.camera.updateProjectionMatrix();
+        gameElements.renderer.setSize(window.innerWidth, window.innerHeight);
+        if(gameElements.composer) gameElements.composer.setSize(window.innerWidth, window.innerHeight);
     });
 }
 
-// Start
+// Start everything when the DOM is ready
 window.addEventListener('DOMContentLoaded', init);
