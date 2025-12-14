@@ -9,7 +9,9 @@ const CONSTANTS = {
     SPEED_INCREMENT: 0.006,
     MAX_SPEED: 0.35,
     MISS_COOLDOWN_MS: 800,
-    HIT_TOLERANCE: 0.6,
+    HIT_TOLERANCE: 0.25, // Tight sweet spot for skill
+    BACK_OF_BAT_TOLERANCE: 0.4, // Early swing zone
+    FRICTION: 0.995, // Gradual slowdown for late swings
     RED_PLAYER_ANGLE: Math.PI,
     BLUE_PLAYER_ANGLE: 0,
     RED_BALL_HEIGHT: 2.0,
@@ -121,6 +123,7 @@ function resetGameVariables() {
         gameState[c].ballAngle=(c==='red'?CONSTANTS.RED_PLAYER_ANGLE:CONSTANTS.BLUE_PLAYER_ANGLE) + (c==='red'?0.5:-0.5);
         gameState[c].streak=0;
         gameState[c].totalHits=0;
+        gameState[c].cooldownTimer=0;
     });
     updateScoreUI();
     const timerEl = document.getElementById('timer');
@@ -169,35 +172,45 @@ function endGame(){
 function handleInput(playerKey){
     if(!gameState.isGameActive) return;
     const isRed=playerKey==='red';
-    const playerState=isRed?gameState.red:gameState.blue;
+    const player=gameState[isRed?'red':'blue'];
     const targetAngle=isRed?CONSTANTS.RED_PLAYER_ANGLE:CONSTANTS.BLUE_PLAYER_ANGLE;
 
-    if(playerState.cooldownTimer>0) return;
-    triggerSwingAnimation(playerState);
+    if(player.cooldownTimer>0) return;
+    triggerSwingAnimation(player);
 
-    const angleDiff=getShortestAngleDistance(playerState.ballAngle,targetAngle);
+    const angleDiff=getShortestAngleDistance(player.ballAngle,targetAngle);
 
+    // -----------------------
+    // TOO EARLY / BACK OF BAT
+    // -----------------------
+    if(angleDiff*player.direction > CONSTANTS.BACK_OF_BAT_TOLERANCE){
+        player.ballSpeed = -player.ballSpeed; // Reverse
+        player.streak = 0;
+        player.cooldownTimer = CONSTANTS.MISS_COOLDOWN_MS;
+        return;
+    }
+
+    // -----------------------
+    // PERFECT HIT
+    // -----------------------
     if(Math.abs(angleDiff)<=CONSTANTS.HIT_TOLERANCE){
-        // HIT
-        playerState.score++;
-        playerState.totalHits++;
-        playerState.ballSpeed=Math.min(playerState.ballSpeed+CONSTANTS.SPEED_INCREMENT,CONSTANTS.MAX_SPEED);
-        playerState.streak++;
-        if(playerState.streak>1) showStreakPopup(playerState);
+        player.score++;
+        player.totalHits++;
+        player.ballSpeed=Math.min(player.ballSpeed+CONSTANTS.SPEED_INCREMENT,CONSTANTS.MAX_SPEED);
+        player.streak++;
+        if(player.streak>1) showStreakPopup(player);
         updateScoreUI();
         createExplosion(isRed);
         addCameraShake(0.3);
-    } else if(angleDiff*playerState.direction>0){
-        // BACK OF BAT
-        playerState.ballSpeed=CONSTANTS.BASE_SPEED;
-        playerState.cooldownTimer=CONSTANTS.MISS_COOLDOWN_MS;
-        playerState.streak=0;
-    } else {
-        // MISS
-        playerState.ballSpeed=CONSTANTS.BASE_SPEED;
-        playerState.cooldownTimer=CONSTANTS.MISS_COOLDOWN_MS;
-        playerState.streak=0;
+        return;
     }
+
+    // -----------------------
+    // TOO LATE / MISS
+    // -----------------------
+    player.streak=0;
+    player.cooldownTimer = CONSTANTS.MISS_COOLDOWN_MS;
+    // Gradual slowdown via friction handled in physics update
 }
 
 // =============================================================================
@@ -225,7 +238,6 @@ function setupLighting(){
 //  GAME OBJECTS
 // =============================================================================
 function createGameObjects(){
-    // Pole
     const poleGeo = new THREE.CylinderGeometry(0.2,0.2,5,16);
     const poleMat = new THREE.MeshStandardMaterial({color:0x888888});
     const pole = new THREE.Mesh(poleGeo,poleMat);
@@ -233,7 +245,6 @@ function createGameObjects(){
     gameElements.scene.add(pole);
     gameElements.three.pole = pole;
 
-    // Balls
     const ballGeo = new THREE.SphereGeometry(0.3,32,32);
     const redBall = new THREE.Mesh(ballGeo,new THREE.MeshStandardMaterial({color:0xff3333,emissive:0x550000}));
     redBall.position.y=CONSTANTS.RED_BALL_HEIGHT;
@@ -243,7 +254,6 @@ function createGameObjects(){
     gameElements.three.redBall=redBall;
     gameElements.three.blueBall=blueBall;
 
-    // Players
     createPlayerMesh('red'); createPlayerMesh('blue');
 }
 
@@ -281,19 +291,25 @@ function animate(){
 }
 
 function updateBallPhysics(){
-    moveBall(gameState.red,gameElements.three.redBall);
-    moveBall(gameState.blue,gameElements.three.blueBall);
-}
+    ['red','blue'].forEach(c=>{
+        const player=gameState[c];
+        const ball=gameElements.three[c+'Ball'];
+        ball.position.x=Math.cos(player.ballAngle)*CONSTANTS.ORBIT_RADIUS;
+        ball.position.z=Math.sin(player.ballAngle)*CONSTANTS.ORBIT_RADIUS;
+        ball.position.y=c==='red'?CONSTANTS.RED_BALL_HEIGHT:CONSTANTS.BLUE_BALL_HEIGHT;
 
-function moveBall(player,ballMesh){
-    player.ballAngle+=player.ballSpeed*player.direction;
-    if(player.ballAngle>Math.PI*2) player.ballAngle-=Math.PI*2;
-    if(player.ballAngle<0) player.ballAngle+=Math.PI*2;
-    ballMesh.position.x=Math.cos(player.ballAngle)*CONSTANTS.ORBIT_RADIUS;
-    ballMesh.position.z=Math.sin(player.ballAngle)*CONSTANTS.ORBIT_RADIUS;
-    ballMesh.position.y=player===gameState.red?CONSTANTS.RED_BALL_HEIGHT:CONSTANTS.BLUE_BALL_HEIGHT;
+        // Advance ball
+        player.ballAngle+=player.ballSpeed*player.direction;
 
-    if(player.cooldownTimer>0) player.cooldownTimer-=16;
+        // Wrap angles
+        if(player.ballAngle>Math.PI*2) player.ballAngle-=Math.PI*2;
+        if(player.ballAngle<0) player.ballAngle+=Math.PI*2;
+
+        // Apply friction if ball speed is positive (missed late)
+        if(player.cooldownTimer>0) player.ballSpeed*=CONSTANTS.FRICTION;
+
+        if(player.cooldownTimer>0) player.cooldownTimer-=16;
+    });
 }
 
 // =============================================================================
