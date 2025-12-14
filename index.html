@@ -17,13 +17,8 @@
             width: 100vw;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        html {
-            height: 100%;
-            width: 100%;
-        }
-        canvas { 
-            display: block; 
-        }
+        html { height: 100%; width: 100%; }
+        canvas { display: block; }
 
         /* --- Menu Styling --- */
         .menu-container {
@@ -41,7 +36,7 @@
             box-shadow: 0 0 20px rgba(100, 100, 255, 0.3);
             width: 300px;
         }
-        .menu-container h1 {
+        .menu-container h1, .menu-container h2 {
             color: #ccf;
             text-shadow: 0 0 10px #88f;
             margin-top: 0;
@@ -76,9 +71,36 @@
             color: white;
             font-size: 16px;
         }
+
+        /* --- HUD --- */
+        #scoreboard {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 40px;
+            font-size: 18px;
+            color: white;
+            text-shadow: 1px 1px 5px black;
+            z-index: 1000;
+        }
+        #scoreboard div { text-align: center; }
+
+        /* Streak popup */
+        #streakPopup {
+            position: absolute;
+            font-size: 32px;
+            font-weight: bold;
+            color: yellow;
+            text-shadow: 2px 2px 5px black;
+            display: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+
     <!-- Main Menu -->
     <div id="mainMenu" class="menu-container">
         <h1>WHO GOES THERE!?</h1>
@@ -97,18 +119,27 @@
         <button id="backToMainBtn" style="background: #5a3a3a;">Back</button>
     </div>
 
-    <!-- The game script will create the rest of the UI (scoreboard, etc.) -->
+    <!-- HUD -->
+    <div id="scoreboard">
+        <div>Red<br>Score: <span id="scoreRed">0</span><br>Total Hits: <span id="totalRed">0</span></div>
+        <div>Timer: <span id="timer">60</span></div>
+        <div>Blue<br>Score: <span id="scoreBlue">0</span><br>Total Hits: <span id="totalBlue">0</span></div>
+    </div>
+
+    <!-- Streak popup -->
+    <div id="streakPopup"></div>
 
     <!-- ================================================================= -->
     <!--                       REQUIRED SCRIPT FILES                       -->
     <!-- ================================================================= -->
 
-    <!-- Main Three.js Library -->
+    <!-- Three.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    
     <!-- PeerJS for Networking -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     
-    <!-- ADD-ONS FOR POST-PROCESSING (BLOOM/GLOW EFFECT) -->
+    <!-- Postprocessing Add-ons -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/RenderPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/ShaderPass.js"></script>
@@ -116,7 +147,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/UnrealBloomPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/LuminosityHighPassShader.js"></script>
     
-    <!-- Your final game script will go here -->
+    <!-- Your Game Script -->
     <script src="script.js"></script>
 
 </body>
