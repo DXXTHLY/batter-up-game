@@ -1,807 +1,1624 @@
-// =============================================================================
-//  GAME CONSTANTS
-// =============================================================================
-const CONSTANTS = {
-    // Gameplay
-    GAME_DURATION_S: 40,
-    COUNTDOWN_S: 3,
+let scene, camera, renderer;
+let redPlayer, bluePlayer;
+let redBat, blueBat, redBall, blueBall, centralPole;
+let redBatExtended = false;
+let blueBatExtended = false;
+let redSwinging = false;
+let blueSwinging = false;
+let redBallStarted = false;
+let blueBallStarted = false;
+let sessionHighscores = []; // Array of {winner, redScore, blueScore, time}
+let peer = null;
+let conn = null;
+let isHost = false;
+let playerName = "Player";
+let opponentName = "Opponent";
+let gameInterval; 
+let roomCode = '';
+let pendingRestart = false;
+let syncInterval;
+let lastRedBallAngle = 0;
+let lastBlueBallAngle = 0;
+let targetRedBallAngle = 0;
+let targetBlueBallAngle = 0;
+let interpolationFactor = 0.2; // Adjust for smoother movement (0.1-0.5)
 
-    // Physics
-    ORBIT_RADIUS: 3,
-    BASE_SPEED: 0.01,
-    SPEED_INCREMENT: 0.004,
-    MAX_SPEED: 0.10,
-    SPEED_DECAY_RATE: 0.9995,
-    SPEED_DECAY_DELAY_MS: 2000,
-    MISS_SPEED_PENALTY: 0.5,
-
-    // Objects
-    BALL_RADIUS: 0.3,
-    POLE_RADIUS: 0.2,
-    POLE_HEIGHT: 5,
-    BAT_LENGTH: 2,
-    BAT_THICKNESS: 0.3,
-    RED_BALL_HEIGHT: 2.0,
-    BLUE_BALL_HEIGHT: 1.0,
-
-    // Hit Zones
-    HIT_ZONE_ARC_LENGTH: 0.3,
-    RED_PLAYER_START_ANGLE: Math.PI,
-    BLUE_PLAYER_START_ANGLE: 0,
-
-    // Animation & Visuals
-    SWING_DURATION_MS: 300,
-    ZONE_COLORS: {
-        TOO_EARLY: 0xff0000, // Red
-        PERFECT: 0x00ff00,     // Green
-        MISS: 0xffff00,        // Yellow
-    },
-
-    // Networking
-    SYNC_INTERVAL_MS: 50, // 20 times per second
-    INTERPOLATION_FACTOR: 0.2,
-};
-
-const HIT_ZONES = {
-    TOO_EARLY: 'TOO_EARLY',
-    PERFECT: 'PERFECT',
-    MISS: 'MISS'
+let gameSettings = {
+    baseSpeed: 0.01,
+    speedIncrement: 0.004,
+    maxSpeed: 0.10
 };
 
 
-// =============================================================================
-//  GAME STATE & ELEMENTS
-// =============================================================================
-const gameElements = {
-    scene: null,
-    camera: null,
-    renderer: null,
-    hitSound: null,
-    ui: {},
-    three: {}
-};
+// Add at the top with other state variables
 
-let gameState = {};
+// Game state
+let gameStarted = false;
+let gameActive = false;
+let countdownActive = false;
+let gameTime = 40; // 40 second timer
+let countdownTime = 3;
+let redScore = 0;
+let blueScore = 0;
+let onlineMode = false;
+let currentPlayerRole = null; // 'red' or 'blue'
 
-function resetGameState() {
-    // Preserve highscores between games
-    const highscores = gameState.sessionHighscores || [];
-    
-    gameState = {
-        isGameActive: false,
-        isCountdownActive: false,
-        gameTime: CONSTANTS.GAME_DURATION_S,
-        countdownTime: CONSTANTS.COUNTDOWN_S,
-        gameTimerInterval: null,
-        
-        red: {
-            score: 0,
-            ballAngle: CONSTANTS.RED_PLAYER_START_ANGLE,
-            ballSpeed: 0,
-            direction: -1,
-            isBallStarted: false,
-            hitCount: 0,
-            lastHitTime: 0,
-            isBatExtended: false,
-        },
-        blue: {
-            score: 0,
-            ballAngle: CONSTANTS.BLUE_PLAYER_START_ANGLE + 0.45,
-            ballSpeed: 0,
-            direction: 1,
-            isBallStarted: false,
-            hitCount: 0,
-            lastHitTime: 0,
-            isBatExtended: false,
-        },
+// Ball physics
+let redBallAngle = Math.PI; // Position angle around center (start in front of red player)
+let blueBallAngle = 0.45;  // Start in front of blue player
+let redBallBaseSpeed = 0.01; // was 0.01
+let blueBallBaseSpeed = 0.01; // was 0.01
+let redBallSpeed = 0; // Start at 0 (stationary)
+let blueBallSpeed = 0;
+let redDirection = -1; // -1 = counterclockwise, 1 = clockwise
+let blueDirection = 1;
+let redHitCount = 0; // Count consecutive hits to increase speed
+let blueHitCount = 0;
+let redLastHitTime = 0;
+let blueLastHitTime = 0;
+let redMissed = false;
+let blueMissed = false;
 
-        online: {
-            isOnlineMode: false,
-            isHost: false,
-            peer: null,
-            conn: null,
-            roomCode: '',
-            playerName: "Player",
-            opponentName: "Opponent",
-            currentPlayerRole: null, // 'red' or 'blue'
-            pendingRestart: false,
-            syncInterval: null,
-            targetRedBallAngle: 0,
-            targetBlueBallAngle: 0,
-        },
-        
-        sessionHighscores: highscores,
-    };
-}
+// Constants
+// Add these constants at the top with your other constants
+const ZONE_TOO_EARLY = 0; // Red zone
+const ZONE_HIT = 1;       // Green zone
+const ZONE_MISS = 2;      // Yellow zone
+const ballRadius = 0.3;
+const poleRadius = 0.2;
+const poleHeight = 5;
+const orbitRadius = 3;
+const batLength = 2;
+const batThickness = 0.3;
+const speedIncrement = 0.004; // was .002 How much speed increases per hit
+const maxSpeed = 0.10; // was .08 Maximum speed cap
+const missSpeedPenalty = 0.5; // Multiplier to reduce speed on miss
+const swingDuration = 300; // Milliseconds for swing animation
+const speedDecayRate = 0.9995; // How quickly speed decays when not hit (closer to 1 = slower decay)
+const speedDecayDelay = 2000; // How long after last hit before decay starts (milliseconds)
 
+// Sound effects
+let hitSound;
 
-// =============================================================================
-//  INITIALIZATION & MAIN LOOP
-// =============================================================================
+// UI elements
+let scoreBoard;
+let timerDisplay;
+let countdownDisplay;
+
+  
+
 function init() {
-    // Clear the body of old renderers and UI if re-initializing
-    while (document.body.firstChild) {
-        if (document.body.firstChild.id === 'menu' || document.body.firstChild.id === 'onlineMenu') {
-            document.body.firstChild.style.display = 'none'; // Hide menus instead of removing
-            break;
-        }
-        document.body.removeChild(document.body.firstChild);
-    }
-
-
-    resetGameState();
-    setupScene();
-    setupLighting();
-    createGameObjects();
-    setupUI();
+    // Scene setup
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+    
+    // Camera setup
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 5, 8); // camera close
+    camera.lookAt(0, 2, 0); // look up
+    
+    // Renderer setup
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+    
+    // Load sound effects
     loadSounds();
-    setupGameEventListeners(); // Renamed from setupEventListeners
     
-    showLeaderboard();
-    animate();
-}
-
-function animate() {
-    // Use a flag to stop the animation loop if we go back to the menu
-    if (!gameElements.renderer) return; 
-
-    requestAnimationFrame(animate);
-
-    if (gameState.isGameActive || gameState.online.isOnlineMode) {
-        updateBallPhysics();
-    }
-    
-    if (gameElements.renderer && gameElements.camera && gameElements.scene) {
-        gameElements.renderer.render(gameElements.scene, gameElements.camera);
-    }
-    updateDebugInfo();
-}
-
-// =============================================================================
-//  SCENE & OBJECT SETUP
-// =============================================================================
-function setupScene() {
-    gameElements.scene = new THREE.Scene();
-    gameElements.scene.background = new THREE.Color(0x87CEEB);
-
-    gameElements.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    gameElements.camera.position.set(0, 5, 8);
-    gameElements.camera.lookAt(0, 2, 0);
-
-    gameElements.renderer = new THREE.WebGLRenderer({ antialias: true });
-    gameElements.renderer.setSize(window.innerWidth, window.innerHeight);
-    gameElements.renderer.shadowMap.enabled = true;
-    document.body.appendChild(gameElements.renderer.domElement);
-}
-
-function setupLighting() {
+    // Lights
     const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
-    gameElements.scene.add(ambientLight);
-
+    scene.add(ambientLight);
+    
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(5, 10, 7);
     directionalLight.castShadow = true;
-    gameElements.scene.add(directionalLight);
-}
-
-function createGameObjects() {
+    scene.add(directionalLight);
+    
     // Ground
     const groundGeometry = new THREE.PlaneGeometry(20, 20);
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x4CAF50, side: THREE.DoubleSide });
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x4CAF50,
+        side: THREE.DoubleSide
+    });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
-    gameElements.scene.add(ground);
+    scene.add(ground);
     
-    // Central Pole
-    const poleGeometry = new THREE.CylinderGeometry(CONSTANTS.POLE_RADIUS, CONSTANTS.POLE_RADIUS, CONSTANTS.POLE_HEIGHT, 16);
+    // Create central pole
+    const poleGeometry = new THREE.CylinderGeometry(poleRadius, poleRadius, poleHeight, 16);
     const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-    gameElements.three.pole = new THREE.Mesh(poleGeometry, poleMaterial);
-    gameElements.three.pole.position.y = CONSTANTS.POLE_HEIGHT / 2;
-    gameElements.three.pole.castShadow = true;
-    gameElements.scene.add(gameElements.three.pole);
+    centralPole = new THREE.Mesh(poleGeometry, poleMaterial);
+    centralPole.position.y = poleHeight / 2;
+    centralPole.castShadow = true;
+    scene.add(centralPole);
+    
+    // Create players and bats
+    createPlayers();
+    
+    // Create balls
+    createBalls();
 
-    // Players
-    gameElements.three.redPlayer = createPlayer('red');
-    gameElements.three.bluePlayer = createPlayer('blue');
-    gameElements.scene.add(gameElements.three.redPlayer, gameElements.three.bluePlayer);
+    function createChargeIndicators() {
+        // Red charge indicator
+        redChargeIndicator = document.createElement('div');
+        redChargeIndicator.style.position = 'absolute';
+        redChargeIndicator.style.bottom = '50px';
+        redChargeIndicator.style.left = '20%';
+        redChargeIndicator.style.width = '100px';
+        redChargeIndicator.style.height = '10px';
+        redChargeIndicator.style.backgroundColor = '#333';
+        redChargeIndicator.style.display = 'none';
+        document.body.appendChild(redChargeIndicator);
+        
+        // Blue charge indicator
+        blueChargeIndicator = document.createElement('div');
+        blueChargeIndicator.style.position = 'absolute';
+        blueChargeIndicator.style.bottom = '50px';
+        blueChargeIndicator.style.right = '20%';
+        blueChargeIndicator.style.width = '100px';
+        blueChargeIndicator.style.height = '10px';
+        blueChargeIndicator.style.backgroundColor = '#333';
+        blueChargeIndicator.style.display = 'none';
+        document.body.appendChild(blueChargeIndicator);
+      }
+      
     
-    // Balls
-    const ballGeometry = new THREE.SphereGeometry(CONSTANTS.BALL_RADIUS, 32, 32);
-    gameElements.three.redBall = new THREE.Mesh(ballGeometry, new THREE.MeshStandardMaterial({ color: 0xff0000 }));
-    gameElements.three.blueBall = new THREE.Mesh(ballGeometry, new THREE.MeshStandardMaterial({ color: 0x0000ff }));
-    gameElements.three.redBall.castShadow = true;
-    gameElements.three.blueBall.castShadow = true;
-    updateBallPosition(gameElements.three.redBall, gameState.red.ballAngle, CONSTANTS.RED_BALL_HEIGHT);
-    updateBallPosition(gameElements.three.blueBall, gameState.blue.ballAngle, CONSTANTS.BLUE_BALL_HEIGHT);
-    gameElements.scene.add(gameElements.three.redBall, gameElements.three.blueBall);
+    // Create UI elements
+    createScoreBoard();
+    createTimerDisplay();
+    createCountdownDisplay();
+    createInstructions();
+    addHitZoneMarkers();
+    addDebugInfo();
+    showHelpOverlay();
+
+
+    // Event listeners
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('resize', onWindowResize);
     
-    createHitZoneMarkers();
+    // Start game with countdown
+    startCountdown();
+    showLeaderboard();
+    if (!onlineMode || isHost) createHitZoneToggle();
+
+
 }
 
-function createPlayer(color) {
-    const isRed = color === 'red';
-    const playerColor = isRed ? 0xff0000 : 0x0000ff;
-    const positionX = isRed ? -CONSTANTS.ORBIT_RADIUS - 1 : CONSTANTS.ORBIT_RADIUS + 1;
 
-    const playerGroup = new THREE.Group();
-    playerGroup.position.set(positionX, 0, 0);
+function syncGameState() {
+    if (isHost && conn && conn.open) {
+        conn.send({
+            type: 'sync',
+            ra: redBallAngle,   // Shortened keys
+            ba: blueBallAngle,
+            rs: redBallSpeed,
+            bs: blueBallSpeed,
+            rd: redDirection,
+            bd: blueDirection,
+            rbs: redBallStarted,
+            bbs: blueBallStarted,
+            gt: gameTime,
+            rs: redScore,
+            bs: blueScore
+        });
+    }
+}
 
-    const body = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.5, 0.5, 2, 16),
-        new THREE.MeshStandardMaterial({ color: playerColor })
-    );
-    body.position.y = 1;
-    body.castShadow = true;
-    playerGroup.add(body);
 
-    const batGroup = new THREE.Group();
-    batGroup.position.set(isRed ? 0.4 : -0.4, 1.0, 0.2);
+function showSettingsMenu() {
+    if (isHost || !onlineMode) {
+        document.getElementById('settingsMenu').style.display = 'block';
+        // Set current values
+        document.getElementById('baseSpeed').value = gameSettings.baseSpeed;
+        document.getElementById('baseSpeedRange').value = gameSettings.baseSpeed;
+        document.getElementById('speedInc').value = gameSettings.speedIncrement;
+        document.getElementById('speedIncRange').value = gameSettings.speedIncrement;
+        document.getElementById('maxSpeed').value = gameSettings.maxSpeed;
+        document.getElementById('maxSpeedRange').value = gameSettings.maxSpeed;
+    }
+}
+
+function applySettings() {
+    gameSettings = {
+        baseSpeed: parseFloat(document.getElementById('baseSpeed').value),
+        speedIncrement: parseFloat(document.getElementById('speedInc').value),
+        maxSpeed: parseFloat(document.getElementById('maxSpeed').value)
+    };
     
-    const batMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(CONSTANTS.BAT_LENGTH, CONSTANTS.BAT_THICKNESS, CONSTANTS.BAT_THICKNESS),
+    // Update local physics
+    redBallBaseSpeed = gameSettings.baseSpeed;
+    blueBallBaseSpeed = gameSettings.baseSpeed;
+    speedIncrement = gameSettings.speedIncrement;
+    maxSpeed = gameSettings.maxSpeed;
+
+    // Sync to all players
+    if (onlineMode && conn) {
+        conn.send({ 
+            type: 'game-settings',
+            settings: gameSettings
+        });
+    }
+}
+
+
+
+function createInstructions() {
+    const instructions = document.createElement('div');
+    instructions.style.position = 'absolute';
+    instructions.style.bottom = '10px';
+    instructions.style.left = '50%';
+    instructions.style.transform = 'translateX(-50%)';
+    instructions.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    instructions.style.color = 'white';
+    instructions.style.padding = '8px 20px';
+    instructions.style.fontFamily = 'Arial, sans-serif';
+    instructions.style.fontSize = '16px';
+    instructions.style.borderRadius = '5px';
+    instructions.style.zIndex = '10';
+    instructions.innerHTML = "Red: Hold & release <b>A</b> to swing<br>Blue: Hold & release <b>L</b> to swing";
+    document.body.appendChild(instructions);
+}
+
+
+function loadSounds() {
+    // Create audio element for hit sound
+    hitSound = document.createElement('audio');
+    hitSound.src = 'https://assets.mixkit.co/active_storage/sfx/2048/2048-preview.mp3';
+    hitSound.preload = 'auto';
+}
+
+function playHitSound() {
+    hitSound.currentTime = 0;
+    hitSound.play().catch(e => console.log("Audio play error:", e));
+}
+
+// leaderboard
+function showLeaderboard() {
+    let leaderboard = document.getElementById('session-leaderboard');
+    if (!leaderboard) {
+        leaderboard = document.createElement('div');
+        leaderboard.id = 'session-leaderboard';
+        leaderboard.style.position = 'absolute';
+        leaderboard.style.top = '110px';
+        leaderboard.style.right = '20px';
+        leaderboard.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        leaderboard.style.color = 'white';
+        leaderboard.style.fontFamily = 'Arial, sans-serif';
+        leaderboard.style.fontSize = '16px';
+        leaderboard.style.padding = '12px 18px';
+        leaderboard.style.borderRadius = '8px';
+        leaderboard.style.zIndex = '20';
+        leaderboard.style.maxWidth = '260px';
+        document.body.appendChild(leaderboard);
+    }
+    let html = `<b>Session Highscores</b><br><table style="width:100%;color:white;"><tr><th>Time</th><th>Red</th><th>Blue</th><th>Winner</th></tr>`;
+    // Show last 10 games, newest first
+    sessionHighscores.slice(-10).reverse().forEach(entry => {
+        html += `<tr>
+            <td>${entry.time}</td>
+            <td style="color:#ff4444">${entry.redScore}</td>
+            <td style="color:#44aaff">${entry.blueScore}</td>
+            <td>${entry.winner.replace(' WINS!', '')}</td>
+        </tr>`;
+    });
+    html += `</table>`;
+    leaderboard.innerHTML = html;
+
+    document.querySelectorAll('#settingsMenu input').forEach(input => {
+        input.addEventListener('input', function(e) {
+            const id = e.target.id;
+            if (id.includes('Range')) {
+                document.getElementById(id.replace('Range', '')).value = e.target.value;
+            } else {
+                document.getElementById(id + 'Range').value = e.target.value;
+            }
+        });
+    });
+    
+    if (isHost || !onlineMode) {
+        const settingsBtn = document.createElement('button');
+        settingsBtn.textContent = 'Host Settings';
+        settingsBtn.style.position = 'fixed';
+        settingsBtn.style.bottom = '30px';
+        settingsBtn.style.left = '30px';   // <-- bottom left corner
+        settingsBtn.style.zIndex = '1000';
+        settingsBtn.style.padding = '12px 24px';
+        settingsBtn.style.fontSize = '18px';
+        settingsBtn.style.background = '#222';
+        settingsBtn.style.color = 'white';
+        settingsBtn.style.border = 'none';
+        settingsBtn.style.borderRadius = '8px';
+        settingsBtn.style.cursor = 'pointer';
+        settingsBtn.onclick = showSettingsMenu;
+        document.body.appendChild(settingsBtn);
+    }
+    
+    
+}
+
+const blueArcCenter = 0; // Centered at 0 radians (right side)
+createZoneArc(blueArcCenter - redArcLength, blueArcCenter, blueZoneHeight, missColor);
+createZoneArc(blueArcCenter, blueArcCenter + redArcLength, blueZoneHeight, hitColor);
+createZoneArc(blueArcCenter + redArcLength, blueArcCenter + redArcLength*2, blueZoneHeight, earlyColor);
+
+
+
+function createPlayers() {
+    // Red player (positioned at left side)
+    redPlayer = new THREE.Group();
+    redPlayer.position.set(-orbitRadius - 1, 0, 0);
+    
+    const redPlayerBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 2, 16),
+        new THREE.MeshStandardMaterial({ color: 0xff0000 })
+    );
+    redPlayerBody.position.y = 1;
+    redPlayerBody.castShadow = true;
+    redPlayer.add(redPlayerBody);
+    
+    // Red bat
+    // Red bat - Positioned properly
+    // Red bat - Positioned properly
+    redBat = new THREE.Group();
+    redBat.position.y = 1.0;
+    redBat.position.x = 0.4; // Position bat slightly to the right side of player
+    redBat.position.z = 0.2; // Position bat slightly forward
+    redPlayer.add(redBat);
+    
+    const redBatMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(batLength, batThickness, batThickness),
         new THREE.MeshStandardMaterial({ color: 0x8B4513 })
     );
-    batMesh.position.x = isRed ? CONSTANTS.BAT_LENGTH / 2 : -CONSTANTS.BAT_LENGTH / 2;
-    batMesh.castShadow = true;
-    batGroup.add(batMesh);
+    redBatMesh.position.x = batLength/2;
+    redBatMesh.castShadow = true;
+    redBat.add(redBatMesh);
     
-    playerGroup.add(batGroup);
-    playerGroup.lookAt(0, 0, 0);
+    scene.add(redPlayer);
+        
+    // Blue player (positioned at right side)
+    bluePlayer = new THREE.Group();
+    bluePlayer.position.set(orbitRadius + 1, 0, 0);
+    
+    const bluePlayerBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 2, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0000ff })
+    );
+    bluePlayerBody.position.y = 1;
+    bluePlayerBody.castShadow = true;
+    bluePlayer.add(bluePlayerBody);
+    
+      // Blue bat - Positioned properly
+    blueBat = new THREE.Group();
+    blueBat.position.y = 1.0;
+    blueBat.position.x = -0.4; // Position bat slightly to the left side of player
+    blueBat.position.z = 0.2; // Position bat slightly forward
+    bluePlayer.add(blueBat);
+    
+    const blueBatMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(batLength, batThickness, batThickness),
+        new THREE.MeshStandardMaterial({ color: 0x8B4513 })
+    );
+    blueBatMesh.position.x = -batLength/2;
+    blueBatMesh.castShadow = true;
+    blueBat.add(blueBatMesh);
+    
+    scene.add(bluePlayer);
+    
+    // Make players face the center
+    redPlayer.lookAt(0, 0, 0);
+    bluePlayer.lookAt(0, 0, 0);
+    }
 
-    gameElements.three[isRed ? 'redBat' : 'blueBat'] = batGroup;
+function createBalls() {
+    const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32);
+    
+    // Red ball - higher position
+    redBall = new THREE.Mesh(
+        ballGeometry,
+        new THREE.MeshStandardMaterial({ color: 0xff0000 })
+    );
+    redBall.castShadow = true;
+    updateBallPosition(redBall, redBallAngle, 2.0);
+    scene.add(redBall);
+    
+    // Blue ball - standard position
+    blueBall = new THREE.Mesh(
+        ballGeometry,
+        new THREE.MeshStandardMaterial({ color: 0x0000ff })
+    );
+    blueBall.castShadow = true;
+    updateBallPosition(blueBall, blueBallAngle, 1.0);
+    scene.add(blueBall);
+}
 
-    return playerGroup;
+function addHitZoneMarkers() {
+    // Colors
+    const earlyColor = 0xff0000;  // Red (back zone)
+    const hitColor = 0x00ff00;    // Green (middle zone)
+    const missColor = 0xffff00;   // Yellow (front zone)
+
+    // Heights for RED lines
+    const redBaseHeight = 2.1;
+    const lineSpacing = 0.08;
+    const redHeights = [
+        redBaseHeight - lineSpacing,
+        redBaseHeight,
+        redBaseHeight + lineSpacing
+    ];
+
+    // Heights for BLUE lines (lower than red)
+    const blueBaseHeight = 1.0; // <-- Lower this value to match blue ball height
+    const blueHeights = [
+        blueBaseHeight - lineSpacing,
+        blueBaseHeight,
+        blueBaseHeight + lineSpacing
+    ];
+
+    const arcLength = 0.3;
+    
+    // RED PLAYER ZONES (left side)
+    redHeights.forEach(h => {
+        createZoneArc(Math.PI - arcLength, Math.PI, h, missColor); // Yellow (front)
+        createZoneArc(Math.PI, Math.PI + arcLength, h, hitColor);  // Green (middle)
+        createZoneArc(Math.PI + arcLength, Math.PI + arcLength*2, h, earlyColor); // Red (back)
+    });
+
+    // BLUE PLAYER ZONES (right side) - using lower heights
+    blueHeights.forEach(h => {
+        createZoneArc(0 + arcLength*2, 0 + arcLength*3, h, missColor);   // Yellow (front)
+        createZoneArc(0 + arcLength, 0 + arcLength*2, h, hitColor);      // Green (middle)
+        createZoneArc(0, 0 + arcLength, h, earlyColor);                  // Red (back)
+    });
 }
 
 
-// =============================================================================
-//  GAME FLOW & LOGIC
-// =============================================================================
+
+
+  
+  
+  function createHitZoneToggle() {
+    // Only show for host in online mode or always in local mode
+    if (onlineMode && !isHost) return;
+    const existing = document.getElementById('hit-zone-toggle');
+    if (existing) return;
+
+    const toggleDiv = document.createElement('div');
+    toggleDiv.id = 'hit-zone-toggle';
+    toggleDiv.style.position = 'absolute';
+    toggleDiv.style.bottom = '30px';
+    toggleDiv.style.right = '30px';
+    toggleDiv.style.background = 'rgba(0,0,0,0.7)';
+    toggleDiv.style.color = 'white';
+    toggleDiv.style.padding = '16px';
+    toggleDiv.style.borderRadius = '8px';
+    toggleDiv.style.zIndex = '1000';
+    toggleDiv.style.fontFamily = 'Arial, sans-serif';
+
+    toggleDiv.innerHTML = `
+    <label style="font-size:18px;">
+        <input type="checkbox" id="toggle-hitzones" checked>
+        Show Hit Zones (Controls for both players)
+    </label>
+    `;
+
+
+    document.body.appendChild(toggleDiv);
+
+    document.getElementById('toggle-hitzones').addEventListener('change', (e) => {
+        setHitZoneVisibility(e.target.checked);
+        if (onlineMode && isHost && conn) {
+            conn.send({ type: 'toggle-hitzones', show: e.target.checked });
+        }
+    });
+}
+
+  
+function setHitZoneVisibility(show) {
+    scene.traverse(obj => {
+        if (obj instanceof THREE.Line) obj.visible = show;
+    });
+}
+
+  
+  
+  function createZoneArc(startAngle, endAngle, height, color) {
+    const points = [];
+    const segments = 20;
+    const angleStep = (endAngle - startAngle) / segments;
+    
+    for (let i = 0; i <= segments; i++) {
+      const angle = startAngle + (angleStep * i);
+      const x = Math.cos(angle) * orbitRadius;
+      const z = Math.sin(angle) * orbitRadius;
+      points.push(new THREE.Vector3(x, height, z));
+    }
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ color: color, linewidth: 5 });
+    const arc = new THREE.Line(geometry, material);
+    scene.add(arc);
+  }
+  
+  
+
+function createScoreBoard() {
+    scoreBoard = document.createElement('div');
+    scoreBoard.style.position = 'absolute';
+    scoreBoard.style.top = '10px';
+    scoreBoard.style.left = '50%';
+    scoreBoard.style.transform = 'translateX(-50%)';
+    scoreBoard.style.padding = '10px';
+    scoreBoard.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    scoreBoard.style.color = 'white';
+    scoreBoard.style.fontFamily = 'Arial, sans-serif';
+    scoreBoard.style.fontSize = '24px';
+    scoreBoard.style.borderRadius = '5px';
+    scoreBoard.style.textAlign = 'center';
+    updateScoreBoard();
+    document.body.appendChild(scoreBoard);
+}
+
+function createTimerDisplay() {
+    timerDisplay = document.createElement('div');
+    timerDisplay.style.position = 'absolute';
+    timerDisplay.style.top = '70px';
+    timerDisplay.style.left = '50%';
+    timerDisplay.style.transform = 'translateX(-50%)';
+    timerDisplay.style.padding = '5px 15px';
+    timerDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    timerDisplay.style.color = 'white';
+    timerDisplay.style.fontFamily = 'Arial, sans-serif';
+    timerDisplay.style.fontSize = '28px';
+    timerDisplay.style.fontWeight = 'bold';
+    timerDisplay.style.borderRadius = '5px';
+    timerDisplay.style.display = 'none';
+    updateTimerDisplay();
+    document.body.appendChild(timerDisplay);
+}
+
+function createCountdownDisplay() {
+    countdownDisplay = document.createElement('div');
+    countdownDisplay.style.position = 'absolute';
+    countdownDisplay.style.top = '50%';
+    countdownDisplay.style.left = '50%';
+    countdownDisplay.style.transform = 'translate(-50%, -50%)';
+    countdownDisplay.style.padding = '20px 40px';
+    countdownDisplay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    countdownDisplay.style.color = 'white';
+    countdownDisplay.style.fontFamily = 'Arial, sans-serif';
+    countdownDisplay.style.fontSize = '64px';
+    countdownDisplay.style.fontWeight = 'bold';
+    countdownDisplay.style.borderRadius = '10px';
+    countdownDisplay.style.display = 'none';
+    document.body.appendChild(countdownDisplay);
+}
+
+function updateScoreBoard() {
+    // Get player names based on game mode
+    const redName = onlineMode ? 
+        (currentPlayerRole === 'red' ? playerName : opponentName) : 
+        'Red';
+    
+    const blueName = onlineMode ? 
+        (currentPlayerRole === 'blue' ? playerName : opponentName) : 
+        'Blue';
+
+    // Update scoreboard display
+    scoreBoard.innerHTML = `
+        ${redName}: ${redScore} | ${blueName}: ${blueScore}
+        <br>
+        <span style="font-size: 16px;">
+            ${onlineMode ? `Room: ${peer.id}` : 'Press R to Reset'}
+        </span>
+
+    `;
+
+    // Update role display
+    const roleDisplay = document.getElementById('role-display');
+    if (onlineMode) {
+        roleDisplay.innerHTML = `Playing as: ${currentPlayerRole.toUpperCase()}<br>
+                                Mode: Online (${isHost ? 'Host' : 'Guest'})`;
+    } else {
+        roleDisplay.innerHTML = 'Mode: Local Multiplayer';
+    }
+}
+
+
+function updateTimerDisplay() {
+    if (gameActive) {
+        timerDisplay.textContent = `${gameTime}s`;
+        timerDisplay.style.display = 'block';
+    } else {
+        timerDisplay.style.display = 'none';
+    }
+}
+
+function updateCountdownDisplay() {
+    if (countdownActive) {
+        countdownDisplay.textContent = countdownTime > 0 ? countdownTime : 'GO!';
+        countdownDisplay.style.display = 'block';
+    } else {
+        countdownDisplay.style.display = 'none';
+    }
+}
+
 function startCountdown() {
-    gameState.isCountdownActive = true;
-    gameState.countdownTime = CONSTANTS.COUNTDOWN_S;
+    countdownActive = true;
+    countdownTime = 3;
     updateCountdownDisplay();
     
     const countdownInterval = setInterval(() => {
-        gameState.countdownTime--;
+        countdownTime--;
         updateCountdownDisplay();
         
-        if (gameState.countdownTime < 0) {
+        if (countdownTime < 0) {
             clearInterval(countdownInterval);
-            gameState.isCountdownActive = false;
-            updateCountdownDisplay();
+            countdownActive = false;
+            
+            // Hide the countdown display explicitly
+            countdownDisplay.style.display = 'none';
+            
             startGame();
         }
     }, 1000);
 }
 
 function startGame() {
-    gameState.isGameActive = true;
-    gameState.gameTime = CONSTANTS.GAME_DURATION_S;
+    // Clear existing game elements
+    const oldEndMessage = document.querySelector('div[style*="translate(-50%, -50%)"]');
+    if (oldEndMessage && oldEndMessage.textContent.includes("WIN")) {
+        document.body.removeChild(oldEndMessage);
+    }
+    
+    // Reset countdown display
+    countdownDisplay.style.display = 'none';
+    
+    // Initialize game state
+    gameActive = true;
+    gameTime = 40;
     updateTimerDisplay();
     
-    if (gameState.gameTimerInterval) clearInterval(gameState.gameTimerInterval);
+    // Clear any existing interval (critical fix)
+    if (gameInterval) clearInterval(gameInterval); // <-- This prevents multiple timers
     
-    gameState.gameTimerInterval = setInterval(() => {
-        if (!gameState.isGameActive) {
-             clearInterval(gameState.gameTimerInterval);
-             return;
-        }
-        gameState.gameTime--;
+    // Start new game timer
+    gameInterval = setInterval(() => { // <-- Properly scoped interval
+        gameTime--;
         updateTimerDisplay();
         
-        if (gameState.gameTime <= 0) {
-            clearInterval(gameState.gameTimerInterval);
+        if (gameTime <= 0) {
+            clearInterval(gameInterval);
             endGame();
         }
     }, 1000);
 }
 
 function endGame(customMessage) {
-    gameState.isGameActive = false;
-    let winnerMessage;
-    
+    gameActive = false;
+    let winner;
     if (customMessage) {
-        winnerMessage = customMessage;
-    } else if (gameState.red.score > gameState.blue.score) {
-        winnerMessage = "RED WINS!";
-    } else if (gameState.blue.score > gameState.red.score) {
-        winnerMessage = "BLUE WINS!";
+        winner = customMessage;
+    } else if (redScore > blueScore) {
+        winner = "RED WINS!";
+    } else if (blueScore > redScore) {
+        winner = "BLUE WINS!";
     } else {
-        winnerMessage = "IT'S A TIE!";
+        winner = "IT'S A TIE!";
     }
 
-    gameState.sessionHighscores.push({
-        winner: winnerMessage,
-        redScore: gameState.red.score,
-        blueScore: gameState.blue.score,
+    // Record this game's result in the session highscore list
+    sessionHighscores.push({
+        winner: winner,
+        redScore: redScore,
+        blueScore: blueScore,
         time: new Date().toLocaleTimeString()
     });
-    
-    showLeaderboard();
-    showEndGameMessage(winnerMessage);
-}
 
-function resetGame() {
-    if (gameState.gameTimerInterval) clearInterval(gameState.gameTimerInterval);
-    if (gameState.online.syncInterval) clearInterval(gameState.online.syncInterval);
+    showLeaderboard(); // Show/update the leaderboard
 
-    const onlineState = { ...gameState.online };
-    
-    resetGameState();
-    
-    gameState.online = onlineState;
-    
-    updateBallPosition(gameElements.three.redBall, gameState.red.ballAngle, CONSTANTS.RED_BALL_HEIGHT);
-    updateBallPosition(gameElements.three.blueBall, gameState.blue.ballAngle, CONSTANTS.BLUE_BALL_HEIGHT);
-    updateScoreBoard();
-    updateTimerDisplay();
-    startCountdown();
-}
+    const endMessage = document.createElement('div');
+    endMessage.style.position = 'absolute';
+    endMessage.style.top = '50%';
+    endMessage.style.left = '50%';
+    endMessage.style.transform = 'translate(-50%, -50%)';
+    endMessage.style.padding = '20px 40px';
+    endMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    endMessage.style.color = 'white';
+    endMessage.style.fontFamily = 'Arial, sans-serif';
+    endMessage.style.fontSize = '48px';
+    endMessage.style.fontWeight = 'bold';
+    endMessage.style.borderRadius = '10px';
+    endMessage.style.zIndex = '100';
+    endMessage.textContent = winner;
+    document.body.appendChild(endMessage);
 
-function updateBallPhysics() {
-    if (gameState.online.isOnlineMode && !gameState.online.isHost) {
-        gameState.red.ballAngle = lerp(gameState.red.ballAngle, gameState.online.targetRedBallAngle, CONSTANTS.INTERPOLATION_FACTOR);
-        gameState.blue.ballAngle = lerp(gameState.blue.ballAngle, gameState.online.targetBlueBallAngle, CONSTANTS.INTERPOLATION_FACTOR);
-    } else {
-        const now = Date.now();
-        ['red', 'blue'].forEach(player => {
-            const pState = gameState[player];
-            if (pState.isBallStarted) {
-                pState.ballAngle += pState.ballSpeed * pState.direction;
-            }
-            if (pState.ballSpeed > CONSTANTS.BASE_SPEED && now - pState.lastHitTime > CONSTANTS.SPEED_DECAY_DELAY_MS) {
-                pState.ballSpeed *= CONSTANTS.SPEED_DECAY_RATE;
-                if (pState.ballSpeed < CONSTANTS.BASE_SPEED) {
-                    pState.ballSpeed = CONSTANTS.BASE_SPEED;
-                    pState.hitCount = 0;
-                }
-            }
-        });
-    }
-
-    updateBallPosition(gameElements.three.redBall, normalizeAngle(gameState.red.ballAngle), CONSTANTS.RED_BALL_HEIGHT);
-    updateBallPosition(gameElements.three.blueBall, normalizeAngle(gameState.blue.ballAngle), CONSTANTS.BLUE_BALL_HEIGHT);
-}
-
-function processHit(player) {
-    const pState = gameState[player];
-    const isRed = player === 'red';
-    const ballAngle = normalizeAngle(pState.ballAngle);
-    
-    const centerAngle = isRed ? CONSTANTS.RED_PLAYER_START_ANGLE : CONSTANTS.BLUE_PLAYER_START_ANGLE;
-    const arc = CONSTANTS.HIT_ZONE_ARC_LENGTH;
-
-    let zone;
-    if (isRed) {
-        if (ballAngle >= centerAngle - arc && ballAngle < centerAngle) zone = HIT_ZONES.MISS;
-        else if (ballAngle >= centerAngle && ballAngle < centerAngle + arc) zone = HIT_ZONES.PERFECT;
-        else if (ballAngle >= centerAngle + arc && ballAngle < centerAngle + 2 * arc) zone = HIT_ZONES.TOO_EARLY;
-    } else {
-        if (ballAngle >= centerAngle && ballAngle < centerAngle + arc) zone = HIT_ZONES.TOO_EARLY;
-        else if (ballAngle >= centerAngle + arc && ballAngle < centerAngle + 2 * arc) zone = HIT_ZONES.PERFECT;
-        else if (ballAngle >= centerAngle + 2 * arc && ballAngle < centerAngle + 3 * arc) zone = HIT_ZONES.MISS;
-    }
-
-    if (!zone) return;
-
-    showZoneFeedback(player, zone);
-    pState.lastHitTime = Date.now();
-    playHitSound();
-
-    if (!pState.isBallStarted) {
-        if (zone === HIT_ZONES.PERFECT) {
-            pState.isBallStarted = true;
-            pState.ballSpeed = CONSTANTS.BASE_SPEED;
-            if (!gameState.online.isOnlineMode || gameState.online.isHost) {
-                pState.score++;
-                updateScoreBoard();
-            }
-        }
-        return;
-    }
-
-    switch (zone) {
-        case HIT_ZONES.PERFECT:
-            pState.hitCount++;
-            pState.ballSpeed = Math.min(CONSTANTS.BASE_SPEED + (CONSTANTS.SPEED_INCREMENT * pState.hitCount), CONSTANTS.MAX_SPEED);
-            pState.direction = isRed ? -1 : 1;
-            if (!gameState.online.isOnlineMode || gameState.online.isHost) {
-                pState.score++;
-                updateScoreBoard();
-            }
-            break;
-
-        case HIT_ZONES.TOO_EARLY:
-            pState.direction *= -1;
-            pState.ballSpeed = CONSTANTS.BASE_SPEED * 0.5;
-            pState.hitCount = 0;
-            break;
-
-        case HIT_ZONES.MISS:
-            pState.ballSpeed *= CONSTANTS.MISS_SPEED_PENALTY;
-            if (pState.ballSpeed < CONSTANTS.BASE_SPEED * 0.3) {
-                pState.ballSpeed = CONSTANTS.BASE_SPEED * 0.3;
-            }
-            pState.hitCount = 0;
-            break;
-    }
-}
-
-function swingBat(player) {
-    const bat = gameElements.three[player === 'red' ? 'redBat' : 'blueBat'];
-    if (!bat) return;
-    const targetRotation = player === 'red' ? -Math.PI / 1.5 : Math.PI / 1.5;
-    const startTime = Date.now();
-
-    function animateSwing() {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min(elapsed / CONSTANTS.SWING_DURATION_MS, 1);
-        
-        bat.rotation.z = progress < 0.3 ? targetRotation * (progress / 0.3) : targetRotation * (1 - (progress - 0.3) / 0.7);
-
-        if (progress < 1) requestAnimationFrame(animateSwing);
-        else bat.rotation.z = 0;
-    }
-    animateSwing();
-}
-
-
-// =============================================================================
-//  EVENT LISTENERS & INPUT HANDLING
-// =============================================================================
-function setupGameEventListeners() {
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('resize', onWindowResize);
-}
-
-function onKeyDown(e) {
-    if (e.repeat) return;
-    const key = e.key.toLowerCase();
-    const role = gameState.online.currentPlayerRole;
-
-    if (key === 'a' && (!gameState.online.isOnlineMode || role === 'red')) gameState.red.isBatExtended = true;
-    if (key === 'l' && (!gameState.online.isOnlineMode || role === 'blue')) gameState.blue.isBatExtended = true;
-}
-
-function onKeyUp(e) {
-    const key = e.key.toLowerCase();
-    const role = gameState.online.currentPlayerRole;
-
-    if (key === 'a' && gameState.red.isBatExtended) {
-        gameState.red.isBatExtended = false;
-        if (gameState.isGameActive && (!gameState.online.isOnlineMode || role === 'red')) handleHit('red');
-    }
-    if (key === 'l' && gameState.blue.isBatExtended) {
-        gameState.blue.isBatExtended = false;
-        if (gameState.isGameActive && (!gameState.online.isOnlineMode || role === 'blue')) handleHit('blue');
-    }
-    if (key === 'r' && (gameState.isGameActive || gameState.online.isOnlineMode)) handleResetRequest();
-}
-
-function handleHit(player) {
-    swingBat(player);
-    processHit(player);
-    if (gameState.online.isOnlineMode && gameState.online.conn) {
-        gameState.online.conn.send({ type: 'hit', player: player });
-    }
-}
-
-function handleResetRequest() {
-    if (!gameState.online.isOnlineMode) {
-        resetGame();
-    } else if (gameState.online.conn) {
-        if (!gameState.online.pendingRestart) {
-            gameState.online.pendingRestart = true;
-            gameState.online.conn.send({ type: 'reset-request' });
-            showResetPrompt();
-        } else {
-            gameState.online.conn.send({ type: 'reset-confirm' });
-            resetGame();
-            gameState.online.pendingRestart = false;
-        }
-    }
-}
-
-function onWindowResize() {
-    if (gameElements.camera && gameElements.renderer) {
-        gameElements.camera.aspect = window.innerWidth / window.innerHeight;
-        gameElements.camera.updateProjectionMatrix();
-        gameElements.renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-}
-
-
-// =============================================================================
-//  UI & VISUAL FEEDBACK
-// =============================================================================
-function setupUI() {
-    gameElements.ui.scoreBoard = createUIElement('div', { position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)', padding: '10px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', fontFamily: 'Arial', fontSize: '24px', borderRadius: '5px', textAlign: 'center', zIndex: '10' });
-    gameElements.ui.timerDisplay = createUIElement('div', { display: 'none', position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)', padding: '5px 15px', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', fontFamily: 'Arial', fontSize: '28px', fontWeight: 'bold', borderRadius: '5px', zIndex: '10' });
-    gameElements.ui.countdownDisplay = createUIElement('div', { display: 'none', position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', padding: '20px 40px', backgroundColor: 'rgba(0,0,0,0.7)', color: 'white', fontFamily: 'Arial', fontSize: '64px', fontWeight: 'bold', borderRadius: '10px', zIndex: '10' });
-    gameElements.ui.debugInfo = createUIElement('div', { position: 'absolute', bottom: '10px', left: '10px', padding: '10px', backgroundColor: 'rgba(0,0,0,0.7)', color: 'white', fontFamily: 'monospace', zIndex: '100' });
-    
-    updateScoreBoard();
-    updateTimerDisplay();
-}
-
-function createUIElement(tag, style) {
-    const el = document.createElement(tag);
-    Object.assign(el.style, style);
-    document.body.appendChild(el);
-    return el;
-}
-
-function updateScoreBoard() {
-    if (!gameElements.ui.scoreBoard) return;
-    const { online, red, blue } = gameState;
-    const redName = online.isOnlineMode ? (online.currentPlayerRole === 'red' ? online.playerName : online.opponentName) : 'Red';
-    const blueName = online.isOnlineMode ? (online.currentPlayerRole === 'blue' ? online.playerName : online.opponentName) : 'Blue';
-    
-    let onlineInfo = online.isOnlineMode ? `Room: ${online.roomCode}` : 'Press R to Reset';
-
-    gameElements.ui.scoreBoard.innerHTML = `
-        <span style="color:#ff4444">${redName}: ${red.score}</span> | <span style="color:#44aaff">${blue.score}: ${blueName}</span>
-        <br>
-        <span style="font-size: 16px;">${onlineInfo}</span>`;
-}
-
-function updateTimerDisplay() {
-    const { ui } = gameElements;
-    if (ui.timerDisplay) {
-        ui.timerDisplay.style.display = gameState.isGameActive ? 'block' : 'none';
-        ui.timerDisplay.textContent = `${gameState.gameTime}s`;
-    }
-}
-
-function updateCountdownDisplay() {
-    const { ui } = gameElements;
-    if (ui.countdownDisplay) {
-        ui.countdownDisplay.style.display = gameState.isCountdownActive ? 'block' : 'none';
-        ui.countdownDisplay.textContent = gameState.countdownTime > 0 ? gameState.countdownTime : 'GO!';
-    }
-}
-
-function createHitZoneMarkers() {
-    const { HIT_ZONE_ARC_LENGTH, RED_PLAYER_START_ANGLE, BLUE_PLAYER_START_ANGLE, ZONE_COLORS } = CONSTANTS;
-    const arc = HIT_ZONE_ARC_LENGTH;
-
-    createZoneArc(RED_PLAYER_START_ANGLE - arc, RED_PLAYER_START_ANGLE, CONSTANTS.RED_BALL_HEIGHT, ZONE_COLORS.MISS);
-    createZoneArc(RED_PLAYER_START_ANGLE, RED_PLAYER_START_ANGLE + arc, CONSTANTS.RED_BALL_HEIGHT, ZONE_COLORS.PERFECT);
-    createZoneArc(RED_PLAYER_START_ANGLE + arc, RED_PLAYER_START_ANGLE + 2 * arc, CONSTANTS.RED_BALL_HEIGHT, ZONE_COLORS.TOO_EARLY);
-
-    createZoneArc(BLUE_PLAYER_START_ANGLE, BLUE_PLAYER_START_ANGLE + arc, CONSTANTS.BLUE_BALL_HEIGHT, ZONE_COLORS.TOO_EARLY);
-    createZoneArc(BLUE_PLAYER_START_ANGLE + arc, BLUE_PLAYER_START_ANGLE + 2 * arc, CONSTANTS.BLUE_BALL_HEIGHT, ZONE_COLORS.PERFECT);
-    createZoneArc(BLUE_PLAYER_START_ANGLE + 2 * arc, BLUE_PLAYER_START_ANGLE + 3 * arc, CONSTANTS.BLUE_BALL_HEIGHT, ZONE_COLORS.MISS);
-}
-
-function createZoneArc(startAngle, endAngle, height, color) {
-    const points = [];
-    for (let i = 0; i <= 20; i++) {
-        const angle = startAngle + (endAngle - startAngle) * i / 20;
-        points.push(new THREE.Vector3(Math.cos(angle) * CONSTANTS.ORBIT_RADIUS, height, Math.sin(angle) * CONSTANTS.ORBIT_RADIUS));
-    }
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color, linewidth: 3 });
-    gameElements.scene.add(new THREE.Line(geometry, material));
-}
-
-function showEndGameMessage(message) {
-    const el = createUIElement('div', { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', padding: '20px 40px', backgroundColor: 'rgba(0,0,0,0.7)', color: 'white', fontFamily: 'Arial', fontSize: '48px', fontWeight: 'bold', borderRadius: '10px', zIndex: '100' });
-    el.textContent = message;
-    setTimeout(() => el.remove(), 4000);
-}
-
-function showZoneFeedback(player, zone) {
-    const color = { [HIT_ZONES.TOO_EARLY]: '#FF0000', [HIT_ZONES.PERFECT]: '#00FF00', [HIT_ZONES.MISS]: '#FFFF00' }[zone];
-    const text = { [HIT_ZONES.TOO_EARLY]: 'TOO EARLY!', [HIT_ZONES.PERFECT]: 'PERFECT!', [HIT_ZONES.MISS]: 'MISS!' }[zone];
-    
-    const feedback = createUIElement('div', { position: 'absolute', top: '30%', fontSize: '24px', fontWeight: 'bold', color: color, textShadow: '1px 1px 2px black' });
-    feedback.style[player === 'red' ? 'left' : 'right'] = '20%';
-    feedback.textContent = text;
-    
-    setTimeout(() => feedback.remove(), 800);
-}
-
-function showResetPrompt() {
-    if (document.getElementById('reset-prompt')) return;
-    const prompt = createUIElement('div', { id: 'reset-prompt', position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'rgba(0,0,0,0.7)', color: 'white', padding: '10px', borderRadius: '5px' });
-    prompt.textContent = 'Restart requested. Press R again to confirm.';
+    // Remove after 3 seconds
     setTimeout(() => {
-        prompt.remove();
-        gameState.online.pendingRestart = false;
+        document.body.removeChild(endMessage);
     }, 3000);
 }
 
-function showLeaderboard() {
-    let leaderboard = document.getElementById('session-leaderboard');
-    if (!leaderboard) {
-        leaderboard = createUIElement('div', { id: 'session-leaderboard', position: 'absolute', top: '110px', right: '20px', backgroundColor: 'rgba(0,0,0,0.7)', color: 'white', fontFamily: 'Arial', fontSize: '16px', padding: '12px 18px', borderRadius: '8px', zIndex: '20', maxWidth: '260px' });
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function onKeyDown(e) {
+    // Prevent key repeat
+    if (e.repeat) return;
+
+    // Handle local mode or online role-specific keys
+    if (!onlineMode || (currentPlayerRole === 'red' && (e.key === 'a' || e.key === 'A')) || 
+                      (currentPlayerRole === 'blue' && (e.key === 'l' || e.key === 'L'))) {
+        // Handle red bat
+        if ((e.key === 'a' || e.key === 'A') && !redBatExtended) {
+            redBatExtended = true;
+            updateBatPosition(redBat, true, 1);
+        }
+        // Handle blue bat
+        if ((e.key === 'l' || e.key === 'L') && !blueBatExtended) {
+            blueBatExtended = true;
+            updateBatPosition(blueBat, true, -1);
+        }
     }
-    let html = `<b>Session Highscores</b><br><table style="width:100%;color:white;"><tr><th>Time</th><th>Red</th><th>Blue</th><th>Winner</th></tr>`;
-    gameState.sessionHighscores.slice(-10).reverse().forEach(entry => {
-        html += `<tr><td>${entry.time}</td><td style="color:#ff4444">${entry.redScore}</td><td style="color:#44aaff">${entry.blueScore}</td><td>${entry.winner.replace(' WINS!', '')}</td></tr>`;
-    });
-    leaderboard.innerHTML = html + `</table>`;
+
+    // Handle reset (needs confirmation in online mode)
+    if (e.key === 'r' || e.key === 'R') {
+        if (!onlineMode) {
+            resetGame();
+        } else if (conn) {
+            if (!pendingRestart) {
+                pendingRestart = true;
+                conn.send({ type: 'reset-request' });
+                showResetPrompt();
+            } else {
+                conn.send({ type: 'reset-confirm' });
+                resetGame();
+                pendingRestart = false;
+            }
+        }
+    }
 }
 
-function updateDebugInfo() {
-    if (!gameElements.ui.debugInfo) return;
-    const redAngle = (gameState.red.ballAngle * 180 / Math.PI).toFixed(0);
-    const blueAngle = (gameState.blue.ballAngle * 180 / Math.PI).toFixed(0);
+function onKeyUp(e) {
+    // Red player release (local or online red)
+    if ((e.key === 'a' || e.key === 'A') && redBatExtended) {
+        redBatExtended = false;
+        updateBatPosition(redBat, false, 1);
+        if (gameActive) {
+            processRedHit();
+            swingBat('red');
+            // Sync with opponent if online
+            if (onlineMode && conn && currentPlayerRole === 'red') {
+                conn.send({ type: 'hit', player: 'red' });
+            }
+        }
+    }
+    
+    // Blue player release (local or online blue)
+    if ((e.key === 'l' || e.key === 'L') && blueBatExtended) {
+        blueBatExtended = false;
+        updateBatPosition(blueBat, false, -1);
+        if (gameActive) {
+            processBlueHit();
+            swingBat('blue');
+            // Sync with opponent if online
+            if (onlineMode && conn && currentPlayerRole === 'blue') {
+                conn.send({ type: 'hit', player: 'blue' });
+            }
+        }
+    }
+}
+  
+    // Add these new functions
+function showResetPrompt() {
+    const prompt = document.createElement('div');
+    prompt.id = 'reset-prompt';
+    prompt.style.position = 'absolute';
+    prompt.style.top = '20%';
+    prompt.style.left = '50%';
+    prompt.style.transform = 'translateX(-50%)';
+    prompt.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    prompt.style.color = 'white';
+    prompt.style.padding = '10px';
+    prompt.style.borderRadius = '5px';
+    prompt.textContent = 'Restart requested. Press R again to confirm.';
+    document.body.appendChild(prompt);
 
-    gameElements.ui.debugInfo.innerHTML = 
-      `Red Angle: ${redAngle}° | Speed: ${gameState.red.ballSpeed.toFixed(4)}<br>
-       Blue Angle: ${blueAngle}° | Speed: ${gameState.blue.ballSpeed.toFixed(4)}`;
+    setTimeout(() => {
+        if (document.getElementById('reset-prompt')) {
+            document.body.removeChild(prompt);
+            pendingRestart = false;
+        }
+    }, 3000);
 }
 
+// Simplified hit detection that works reliably and requires physical proximity
+function processRedHit() {
+    const batPosition = redPlayer.position.clone();
+    batPosition.y = 1.0;
+    const distance = redBall.position.distanceTo(batPosition);
+    const proximityThreshold = orbitRadius * 0.7;
+    const angle = normalizeAngle(redBallAngle);
+    const currentTime = Date.now();
+    
+    // Only process hits when ball is close enough
+    if (distance > proximityThreshold) {
+      return;
+    }
+    
+    // In processRedHit():
+    let zone = null;
 
-// =============================================================================
-//  NETWORKING
-// =============================================================================
-function startLocal() {
-    document.getElementById('menu').style.display = 'none';
-    init();
-    gameState.online.isOnlineMode = false;
+    // New zone detection for Red player
+    const redCenterAngle = Math.PI;
+    const arcLength = 0.3;
+
+    if (angle >= redCenterAngle + arcLength && angle < redCenterAngle + arcLength*2) {
+    zone = ZONE_TOO_EARLY; // Red zone (back)
+    } else if (angle >= redCenterAngle && angle < redCenterAngle + arcLength) {
+    zone = ZONE_HIT; // Green zone (middle)
+    } else if (angle >= redCenterAngle - arcLength && angle < redCenterAngle) {
+    zone = ZONE_MISS; // Yellow zone (front)
+    } else {
+    return; // No valid zone
+    }
+    
+    // In processRedHit():
+    if (!redBallStarted) {
+        if (zone === ZONE_HIT) {
+            redBallStarted = true;
+            gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
+            redBallSpeed = redBallBaseSpeed;
+            redDirection = -1;
+            if (!onlineMode || isHost) {
+                redScore++;
+                updateScoreBoard();
+            }
+            redLastHitTime = currentTime;
+            playHitSound();
+        }
+        return;
+    }
+    
+    
+    // Process different outcomes based on zones
+    switch (zone) {
+        case ZONE_TOO_EARLY: // Red zone - too early
+            // Reverse direction and reduce speed
+            redDirection *= -1;
+            redBallSpeed = redBallBaseSpeed * 0.5;
+            redHitCount = 0;
+            redLastHitTime = currentTime;
+            playHitSound();
+            redMissed = false;
+            showZoneFeedback('red', zone);
+            break;
+    
+        case ZONE_HIT: // Green zone - good hit
+            // Speed up ball in correct direction
+            redHitCount++;
+            redBallSpeed = Math.min(gameSettings.baseSpeed + (gameSettings.speedIncrement * redHitCount), gameSettings.maxSpeed)
+            redDirection = -1;
+            redLastHitTime = currentTime;
+            playHitSound();
+    
+            // Only update score if host or local mode
+            if (!onlineMode || isHost) {
+                redScore++;
+                updateScoreBoard();
+            }
+    
+            redMissed = false;
+            showZoneFeedback('red', zone);
+            break;
+    
+        case ZONE_MISS: // Yellow zone - miss
+            // Reduce speed but maintain direction
+            redBallSpeed *= missSpeedPenalty;
+            if (redBallSpeed < redBallBaseSpeed * 0.3) {
+                redBallSpeed = redBallBaseSpeed * 0.3;
+            }
+            redHitCount = 0;
+            redMissed = true;
+            showZoneFeedback('red', zone);
+            break;
+    }
+    
+      
+  }
+  
+  function processBlueHit() {
+    const batPosition = bluePlayer.position.clone();
+    batPosition.y = 1.0;
+    const distance = blueBall.position.distanceTo(batPosition);
+    const proximityThreshold = orbitRadius * 0.7;
+    const angle = normalizeAngle(blueBallAngle);
+    const currentTime = Date.now();
+    
+    // Only process hits when ball is close enough
+    if (distance > proximityThreshold) {
+      return;
+    }
+    
+    // In processBlueHit():
+    let zone = null;
+    const arcLength = 0.3;  // This is already correct
+
+    if (angle >= arcLength*2 && angle < arcLength*3) {  // Use arcLength instead of blueArcLength
+        zone = ZONE_MISS; // Yellow (front)
+    } else if (angle >= arcLength && angle < arcLength*2) {
+        zone = ZONE_HIT; // Green (middle)
+    } else if (angle >= 0 && angle < arcLength) {
+        zone = ZONE_TOO_EARLY; // Red (back)
+    } else {
+        return; // No valid zone - add this to match the red side logic
+    }
+
+      
+    
+
+
+    if (!blueBallStarted) {
+        if (zone === ZONE_HIT) {
+            blueBallStarted = true;
+            gameStarted = redBallStarted || blueBallStarted; // Game starts when either ball starts
+            blueBallSpeed = blueBallBaseSpeed;
+            blueDirection = 1;
+            if (!onlineMode || isHost) {
+                blueScore++;
+                updateScoreBoard();
+            }
+            blueLastHitTime = currentTime;
+            playHitSound();
+        }
+        return;
+    }
+    
+    
+    // Process different outcomes based on zones
+    switch (zone) {
+        case ZONE_TOO_EARLY:
+            blueDirection *= -1;
+            blueBallSpeed = blueBallBaseSpeed * 0.5;
+            blueHitCount = 0;
+            blueLastHitTime = currentTime;
+            playHitSound();
+            blueMissed = false;
+            showZoneFeedback('blue', zone);
+            break;
+    
+        case ZONE_HIT:
+            blueHitCount++;
+            blueBallSpeed = Math.min(blueBallBaseSpeed + (speedIncrement * blueHitCount), maxSpeed);
+            blueDirection = 1;
+            blueLastHitTime = currentTime;
+            playHitSound();
+    
+            // Only update score if host or local mode
+            if (!onlineMode || isHost) {
+                blueScore++;
+                updateScoreBoard();
+            }
+    
+            blueMissed = false;
+            showZoneFeedback('blue', zone);
+            break;
+    
+        case ZONE_MISS:
+            blueBallSpeed *= missSpeedPenalty;
+            if (blueBallSpeed < blueBallBaseSpeed * 0.3) {
+                blueBallSpeed = blueBallBaseSpeed * 0.3;
+            }
+            blueHitCount = 0;
+            blueMissed = true;
+            showZoneFeedback('blue', zone);
+            break;
+    }
+    
+      
+  }
+  
+ 
+  
+  
+
+function swingBat(player) {
+    if (player === 'red') {
+        redSwinging = true;
+        
+        // Animate the swing
+        const startRotation = redBat.rotation.z;
+        const targetRotation = -Math.PI / 2; // 90 degrees clockwise
+        
+        const startTime = Date.now();
+        
+        function animateRedSwing() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / swingDuration, 1);
+            
+            // Swing out fast, return slower (using easing)
+            if (progress < 0.3) {
+                // Fast swing out (first 30% of animation)
+                const swingProgress = progress / 0.3;
+                redBat.rotation.z = startRotation + (targetRotation - startRotation) * swingProgress;
+            } else {
+                // Slower return (remaining 70%)
+                const returnProgress = (progress - 0.3) / 0.7;
+                redBat.rotation.z = targetRotation + (startRotation - targetRotation) * returnProgress;
+            }
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateRedSwing);
+            } else {
+                redBat.rotation.z = startRotation;
+                redSwinging = false;
+            }
+        }
+        
+        animateRedSwing();
+        
+    } else if (player === 'blue') {
+        blueSwinging = true;
+        
+        // Animate the swing
+        const startRotation = blueBat.rotation.z;
+        const targetRotation = Math.PI / 2; // 90 degrees counterclockwise
+        
+        const startTime = Date.now();
+        
+        function animateBlueSwing() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / swingDuration, 1);
+            
+            // Swing out fast, return slower (using easing)
+            if (progress < 0.3) {
+                // Fast swing out (first 30% of animation)
+                const swingProgress = progress / 0.3;
+                blueBat.rotation.z = startRotation + (targetRotation - startRotation) * swingProgress;
+            } else {
+                // Slower return (remaining 70%)
+                const returnProgress = (progress - 0.3) / 0.7;
+                blueBat.rotation.z = targetRotation + (startRotation - targetRotation) * returnProgress;
+            }
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateBlueSwing);
+            } else {
+                blueBat.rotation.z = startRotation;
+                blueSwinging = false;
+            }
+        }
+        
+        animateBlueSwing();
+    }
+}
+
+function updateBatPosition(bat, isExtended, direction) {
+    // Don't move the bat when extended/retracted - we'll handle this in the swing animation
+    // Leave the bat in neutral position
+  }
+  
+  function swingBat(player) {
+    if (player === 'red') {
+      redSwinging = true;
+      
+      // Animate the swing with a better arc
+      const startRotation = 0;
+      const maxRotation = -Math.PI / 1.5; // More realistic swing angle
+      
+      const startTime = Date.now();
+      
+      function animateRedSwing() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / swingDuration, 1);
+        
+        if (progress < 0.3) {
+          // Fast swing out (first 30% of animation)
+          const swingProgress = progress / 0.3;
+          redBat.rotation.z = startRotation + (maxRotation - startRotation) * swingProgress;
+        } else {
+          // Slower return (remaining 70%)
+          const returnProgress = (progress - 0.3) / 0.7;
+          redBat.rotation.z = maxRotation + (startRotation - maxRotation) * returnProgress;
+        }
+        
+        if (progress < 1) {
+          requestAnimationFrame(animateRedSwing);
+        } else {
+          redBat.rotation.z = startRotation;
+          redSwinging = false;
+        }
+      }
+      
+      animateRedSwing();
+      
+    } else if (player === 'blue') {
+      blueSwinging = true;
+      
+      // Animate the swing with a better arc
+      const startRotation = 0;
+      const maxRotation = Math.PI / 1.5; // More realistic swing angle
+      
+      const startTime = Date.now();
+      
+      function animateBlueSwing() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / swingDuration, 1);
+        
+        if (progress < 0.3) {
+          // Fast swing out (first 30% of animation)
+          const swingProgress = progress / 0.3;
+          blueBat.rotation.z = startRotation + (maxRotation - startRotation) * swingProgress;
+        } else {
+          // Slower return (remaining 70%)
+          const returnProgress = (progress - 0.3) / 0.7;
+          blueBat.rotation.z = maxRotation + (startRotation - maxRotation) * returnProgress;
+        }
+        
+        if (progress < 1) {
+          requestAnimationFrame(animateBlueSwing);
+        } else {
+          blueBat.rotation.z = startRotation;
+          blueSwinging = false;
+        }
+      }
+      
+      animateBlueSwing();
+    }
+  }
+  
+  
+
+  function resetGame() {
+    // Clear any existing game timer
+    if (gameInterval) clearInterval(gameInterval);
+    
+    // Reset game state
+    redScore = 0;
+    blueScore = 0;
+    redBallSpeed = 0;
+    blueBallSpeed = 0;
+    redBallAngle = Math.PI;
+    blueBallAngle = 0.45;
+    redDirection = -1;
+    blueDirection = 1;
+    redHitCount = 0;
+    blueHitCount = 0;
+    redMissed = false;
+    blueMissed = false;
+    redChargeStart = null;
+    blueChargeStart = null;
+    gameStarted = false;
+    gameActive = false;
+    redBallStarted = false;
+    blueBallStarted = false;
+    
+    // Update displays
+    updateScoreBoard();
+    updateTimerDisplay();
+    
+    // Reset ball positions
+    updateBallPosition(redBall, redBallAngle, 2.0);
+    updateBallPosition(blueBall, blueBallAngle, 1.0);
+    
+    // Restart countdown
     startCountdown();
 }
 
-function createRoom() {
-    gameState.online.isOnlineMode = true;
-    gameState.online.isHost = true;
-    gameState.online.currentPlayerRole = 'red';
-    gameState.online.playerName = document.getElementById('playerName').value || "Host";
 
-    const peer = new Peer();
-    gameState.online.peer = peer;
 
-    peer.on('open', (id) => {
-        gameState.online.roomCode = id;
-        document.getElementById('onlineMenu').style.display = 'none';
-        init();
-        updateScoreBoard();
-    });
-
-    peer.on('connection', (connection) => {
-        gameState.online.conn = connection;
-        setupConnection();
-    });
+function updateBallPosition(ball, angle, height) {
+    ball.position.x = Math.cos(angle) * orbitRadius;
+    ball.position.z = Math.sin(angle) * orbitRadius;
+    ball.position.y = height; // Set the height based on parameter
 }
 
-function joinRoom() {
-    const code = document.getElementById('roomCodeInput').value;
-    if (!code) { alert("Please enter a room code."); return; }
-
-    gameState.online.isOnlineMode = true;
-    gameState.online.isHost = false;
-    gameState.online.currentPlayerRole = 'blue';
-    gameState.online.playerName = document.getElementById('playerName').value || "Guest";
+function animate() {
+    requestAnimationFrame(animate);
     
-    const peer = new Peer();
-    gameState.online.peer = peer;
+    if (gameStarted) {
+      updateBallPhysics();
+      updateDebugInfo(); // Add this line
+    }
+    
+    renderer.render(scene, camera);
+  }
+  
 
-    peer.on('open', () => {
-        const conn = peer.connect(code);
-        gameState.online.conn = conn;
-        setupConnection();
+  function showHelpOverlay() {
+    const helpOverlay = document.createElement('div');
+    helpOverlay.style.position = 'absolute';
+    helpOverlay.style.top = '50%';
+    helpOverlay.style.left = '50%';
+    helpOverlay.style.transform = 'translate(-50%, -50%)';
+    helpOverlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
+    helpOverlay.style.color = 'white';
+    helpOverlay.style.padding = '20px';
+    helpOverlay.style.borderRadius = '10px';
+    helpOverlay.style.zIndex = '1000';
+    helpOverlay.style.maxWidth = '600px';
+    helpOverlay.style.textAlign = 'center';
+    
+    helpOverlay.innerHTML = `
+        <h2>Hit Zone Guide</h2>
+        <div style="display:flex; justify-content:space-around; margin:10px 0;">
+            <div>
+            <div style="width:20px; height:20px; background-color:#FFFF00; display:inline-block;"></div>
+            <span> Front (Yellow) - Miss Zone</span>
+            </div>
+            <div>
+            <div style="width:20px; height:20px; background-color:#00FF00; display:inline-block;"></div>
+            <span> Middle (Green) - Perfect Hit</span>
+            </div>
+            <div>
+            <div style="width:20px; height:20px; background-color:#FF0000; display:inline-block;"></div>
+            <span> Back (Red) - Too Early</span>
+            </div>
+        </div>
+        <p>Wait for the ball to enter the green zone before swinging!</p>
+        <button id="close-help" style="padding:5px 15px; margin-top:10px;">Got it!</button>
+        `;
+
+    
+    document.body.appendChild(helpOverlay);
+    
+    document.getElementById('close-help').addEventListener('click', () => {
+      document.body.removeChild(helpOverlay);
     });
+  }
+  
+
+
+function showZoneFeedback(player, zone) {
+    let color;
+    switch (zone) {
+      case ZONE_TOO_EARLY:
+        color = '#FF0000'; // Red
+        break;
+      case ZONE_HIT:
+        color = '#00FF00'; // Green
+        break;
+      case ZONE_MISS:
+        color = '#FFFF00'; // Yellow
+        break;
+      default:
+        return;
+    }
+    
+    // Create a temporary feedback element
+    const feedback = document.createElement('div');
+    feedback.style.position = 'absolute';
+    feedback.style.top = '30%';
+    feedback.style.fontSize = '24px';
+    feedback.style.fontWeight = 'bold';
+    feedback.style.color = color;
+    
+    // Position based on player
+    if (player === 'red') {
+      feedback.style.left = '20%';
+      feedback.textContent = zone === ZONE_TOO_EARLY ? 'TOO EARLY!' : 
+                            zone === ZONE_HIT ? 'GREAT HIT!' : 'MISS!';
+    } else {
+      feedback.style.right = '20%';
+      feedback.textContent = zone === ZONE_TOO_EARLY ? 'TOO EARLY!' : 
+                            zone === ZONE_HIT ? 'GREAT HIT!' : 'MISS!';
+    }
+    
+    document.body.appendChild(feedback);
+    
+    // Remove after showing briefly
+    setTimeout(() => {
+      document.body.removeChild(feedback);
+    }, 800);
+  }
+  
+
+
+  function updateBallPhysics() {
+    // Only update physics on host, or in local mode
+    if (!onlineMode || isHost) {
+        // Ball movement physics - only calculated on host or local mode
+        if (redBallStarted) {
+            redBallAngle += redBallSpeed * redDirection;
+            updateBallPosition(redBall, redBallAngle, 2.0);
+            redBallAngle = normalizeAngle(redBallAngle);
+        }
+        
+        if (blueBallStarted) {
+            blueBallAngle += blueBallSpeed * blueDirection;
+            updateBallPosition(blueBall, blueBallAngle, 1.0);
+            blueBallAngle = normalizeAngle(blueBallAngle);
+        }
+        
+        // Reset miss state if ball is moving again
+        if (redBallSpeed > 0) redMissed = false;
+        if (blueBallSpeed > 0) blueMissed = false;
+        
+        const currentTime = Date.now();
+        
+        // Ensure balls always maintain a minimum speed once game has started
+        if (gameStarted) {
+            const minimumSpeed = redBallBaseSpeed * 0.3;
+            
+            if (redBallSpeed < minimumSpeed) {
+                redBallSpeed = minimumSpeed;
+            }
+            if (blueBallSpeed < minimumSpeed) {
+                blueBallSpeed = minimumSpeed;
+            }
+            
+            // Ball recovery after a long period without hits (5 seconds)
+            const recoveryTime = 5000;
+            if (currentTime - redLastHitTime > recoveryTime && redBallSpeed < redBallBaseSpeed) {
+                redBallSpeed = Math.min(redBallSpeed * 1.01, redBallBaseSpeed);
+            }
+            if (currentTime - blueLastHitTime > recoveryTime && blueBallSpeed < blueBallBaseSpeed) {
+                blueBallSpeed = Math.min(blueBallSpeed * 1.01, blueBallBaseSpeed);
+            }
+        }
+        
+        // Red ball speed decay
+        if (redBallSpeed > redBallBaseSpeed && currentTime - redLastHitTime > speedDecayDelay) {
+            // Gradually reduce speed toward base speed
+            redBallSpeed *= speedDecayRate;
+            
+            // If close enough to base speed, just set it to base speed
+            if (redBallSpeed < redBallBaseSpeed + 0.001) {
+                redBallSpeed = redBallBaseSpeed;
+                redHitCount = 0;
+            }
+        }
+        
+        // Blue ball speed decay
+        if (blueBallSpeed > blueBallBaseSpeed && currentTime - blueLastHitTime > speedDecayDelay) {
+            // Gradually reduce speed toward base speed
+            blueBallSpeed *= speedDecayRate;
+            
+            // If close enough to base speed, just set it to base speed
+            if (blueBallSpeed < blueBallBaseSpeed + 0.001) {
+                blueBallSpeed = blueBallBaseSpeed;
+                blueHitCount = 0;
+            }
+        }
+    } 
+
+    else if (onlineMode && !isHost) {
+        // Smoothly interpolate toward host's positions
+        redBallAngle = lerp(redBallAngle, targetRedBallAngle, 0.2);
+        blueBallAngle = lerp(blueBallAngle, targetBlueBallAngle, 0.2);
+        
+        updateBallPosition(redBall, redBallAngle, 2.0);
+        updateBallPosition(blueBall, blueBallAngle, 1.0);
+    }
+    
+    
+
+    if (gameActive && gameStarted) {
+        // Just update physics, don't check for winners here
+    }
 }
+
+
+
+
+function startLocal() {
+    document.getElementById('menu').style.display = 'none';
+    // Reset variables
+    gameStarted = false;
+    redBallStarted = false;
+    blueBallStarted = false;
+    gameActive = false;
+    
+    init();
+    animate();
+    onlineMode = false;
+}
+  
+  function showOnlineMenu() {
+    document.getElementById('onlineMenu').style.display = 'block';
+  }
+  
+  async function createRoom() {
+    peer = new Peer({ host: '0.peerjs.com', port: 443, secure: true });
+    playerName = document.getElementById('playerName').value || "Player";
+    
+    peer.on('open', (id) => {
+      roomCode = id;
+      document.getElementById('menu').style.display = 'none';
+      init();
+      animate();
+      onlineMode = true;
+      isHost = true;
+      currentPlayerRole = 'red';
+      updateScoreBoard();
+      document.getElementById('roomCode').value = id;
+    });
+  
+    peer.on('connection', (connection) => {
+      conn = connection;
+      connection.on('open', () => {
+        connection.send({ type: 'role-assign', role: 'blue' });
+      });
+      setupConnection();
+    });
+  }
+  
+  function joinRoom() {
+    const code = document.getElementById('roomCode').value;
+    playerName = document.getElementById('playerName').value || "Player";
+    
+    peer = new Peer({ host: '0.peerjs.com', port: 443, secure: true });
+    
+    peer.on('open', () => {
+      conn = peer.connect(code);
+      conn.on('open', () => {
+        document.getElementById('menu').style.display = 'none';
+        init();
+        animate();
+        onlineMode = true;
+        currentPlayerRole = 'blue'; // Default until confirmed
+      });
+      setupConnection();
+    });
+  }
+  
+
 
 function setupConnection() {
-    const { conn } = gameState.online;
     conn.on('open', () => {
-        document.getElementById('onlineMenu').style.display = 'none';
-        if (!gameState.online.isHost) init();
-        conn.send({ type: 'name', name: gameState.online.playerName });
-    });
-
-    conn.on('data', (data) => {
-        switch (data.type) {
-            case 'name':
-                gameState.online.opponentName = data.name;
-                updateScoreBoard();
-                if (gameState.online.isHost) {
-                    conn.send({ type: 'start-game', name: gameState.online.playerName });
-                    startCountdown();
-                    gameState.online.syncInterval = setInterval(syncGameState, CONSTANTS.SYNC_INTERVAL_MS);
-                }
-                break;
-            case 'start-game':
-                gameState.online.opponentName = data.name;
-                updateScoreBoard();
-                startCountdown();
-                break;
-            case 'hit':
-                if (data.player !== gameState.online.currentPlayerRole) {
-                    swingBat(data.player);
-                    processHit(data.player);
-                }
-                break;
-            case 'reset-request':
-                if (!gameState.online.pendingRestart) {
-                    gameState.online.pendingRestart = true;
-                    showResetPrompt();
-                }
-                break;
-            case 'reset-confirm':
-                resetGame();
-                gameState.online.pendingRestart = false;
-                break;
-            case 'sync':
-                if (!gameState.online.isHost) {
-                    gameState.online.targetRedBallAngle = data.r_a;
-                    gameState.online.targetBlueBallAngle = data.b_a;
-                    gameState.red.ballSpeed = data.r_s;
-                    gameState.blue.ballSpeed = data.b_s;
-                    gameState.red.direction = data.r_d;
-                    gameState.blue.direction = data.b_d;
-                    gameState.red.score = data.r_sc;
-                    gameState.blue.score = data.b_sc;
-                    gameState.gameTime = data.time;
-                    updateScoreBoard();
-                }
-                break;
+        conn.send({ type: 'name', name: playerName });
+        if (isHost) {
+            conn.send({ type: 'role-assign', role: 'blue' });
+            // Host sends initial toggle state to client
+            const toggle = document.getElementById('toggle-hitzones');
+            if (toggle) conn.send({ type: 'toggle-hitzones', show: toggle.checked });
+            
+            // Frequent state sync (10 times per second)
+            syncInterval = setInterval(() => {
+                if (gameStarted) syncGameState();
+            }, 50);
+        } else {
+            // Remove the toggle UI if it exists (client should NOT have it)
+            const toggleDiv = document.getElementById('hit-zone-toggle');
+            if (toggleDiv) toggleDiv.parentNode.removeChild(toggleDiv);
         }
     });
 
-    conn.on('close', () => endGame(`${gameState.online.opponentName} disconnected.`));
+    conn.on('close', () => {
+        if (syncInterval) clearInterval(syncInterval);
+    });
+
+    conn.on('data', (data) => {
+        if (data.type === 'name') {
+            opponentName = data.name;
+            updateScoreBoard();
+        }
+        else if (data.type === 'role-assign') {
+            currentPlayerRole = data.role;
+            updateScoreBoard();
+        }
+        else if (data.type === 'hit') {
+            if (data.player === 'red') processRedHit();
+            if (data.player === 'blue') processBlueHit();
+        }
+        else if (data.type === 'reset-request') {
+            pendingRestart = true;
+            showResetPrompt();
+        }
+        else if (data.type === 'reset-confirm') {
+            resetGame();
+            pendingRestart = false;
+        }
+        else if (data.type === 'toggle-hitzones') {
+            setHitZoneVisibility(data.show);
+            // Only update the checkbox if host (clients shouldn't have it)
+            if (isHost) {
+                const toggle = document.getElementById('toggle-hitzones');
+                if (toggle) toggle.checked = data.show;
+            }
+        }
+        else if (data.type === 'game-settings') {
+            gameSettings = data.settings;
+            redBallBaseSpeed = gameSettings.baseSpeed;
+            blueBallBaseSpeed = gameSettings.baseSpeed;
+            speedIncrement = gameSettings.speedIncrement;
+            maxSpeed = gameSettings.maxSpeed;
+        }
+        
+        
+        else if (data.type === 'sync' && !isHost) {
+            // Store previous positions
+            lastRedBallAngle = redBallAngle;
+            lastBlueBallAngle = blueBallAngle;
+        
+            // Update target positions using the shortened keys sent by the host
+            targetRedBallAngle = data.ra;
+            targetBlueBallAngle = data.ba;
+        
+            // Update other game state using the same keys
+            redScore = data.rs;
+            blueScore = data.bs;
+            redBallSpeed = data.rs;
+            blueBallSpeed = data.bs;
+            redDirection = data.rd;
+            blueDirection = data.bd;
+            redBallStarted = data.rbs;
+            blueBallStarted = data.bbs;
+            gameTime = data.gt;
+        
+            // Update visuals
+            updateScoreBoard();
+        }
+        
+        
+        function lerp(current, target, factor) {
+            return current + (target - current) * factor;
+        }
+        
+        
+    });
 }
 
-function syncGameState() {
-    const { conn, isHost } = gameState.online;
-    if (isHost && conn?.open) {
-        conn.send({
-            type: 'sync',
-            r_a: gameState.red.ballAngle, b_a: gameState.blue.ballAngle,
-            r_s: gameState.red.ballSpeed, b_s: gameState.blue.ballSpeed,
-            r_d: gameState.red.direction, b_d: gameState.blue.direction,
-            r_sc: gameState.red.score, b_sc: gameState.blue.score,
-            time: gameState.gameTime,
-        });
-    }
-}
 
 
-// =============================================================================
-//  UTILITY FUNCTIONS
-// =============================================================================
-function loadSounds() {
-    gameElements.hitSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2048/2048-preview.mp3');
-    gameElements.hitSound.preload = 'auto';
-}
 
-function playHitSound() {
-    if (gameElements.hitSound) {
-        gameElements.hitSound.currentTime = 0;
-        gameElements.hitSound.play().catch(e => {}); // Suppress play interruption errors
-    }
-}
+
+  
 
 function normalizeAngle(angle) {
     angle = angle % (2 * Math.PI);
-    return angle < 0 ? angle + 2 * Math.PI : angle;
+    if (angle < 0) angle += 2 * Math.PI;
+    return angle;
 }
 
-function lerp(start, end, amt) {
-    return (1 - amt) * start + amt * end;
-}
-
-function updateBallPosition(ball, angle, height) {
-    ball.position.x = Math.cos(angle) * CONSTANTS.ORBIT_RADIUS;
-    ball.position.z = Math.sin(angle) * CONSTANTS.ORBIT_RADIUS;
-    ball.position.y = height;
-}
-
-// =============================================================================
-//  SCRIPT EXECUTION STARTS HERE
-// =============================================================================
-
-// This block connects the HTML buttons to the game functions.
-// It waits for the page to be fully loaded to ensure the buttons exist.
-window.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('startLocalBtn')?.addEventListener('click', startLocal);
-    document.getElementById('createRoomBtn')?.addEventListener('click', createRoom);
-    document.getElementById('joinRoomBtn')?.addEventListener('click', joinRoom);
-});
+function addDebugInfo() {
+    const debugInfo = document.createElement('div');
+    debugInfo.id = 'debug-info';
+    debugInfo.style.position = 'absolute';
+    debugInfo.style.bottom = '10px';
+    debugInfo.style.left = '10px';
+    debugInfo.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    debugInfo.style.color = 'white';
+    debugInfo.style.padding = '10px';
+    debugInfo.style.fontFamily = 'monospace';
+    debugInfo.style.zIndex = '100';
+    document.body.appendChild(debugInfo);
+  }
+  
+  function updateDebugInfo() {
+    const debugInfo = document.getElementById('debug-info');
+    if (!debugInfo) return;
+    
+    const redAngle = (redBallAngle * 180 / Math.PI).toFixed(0);
+    const blueAngle = (blueBallAngle * 180 / Math.PI).toFixed(0);
+    
+    // Update zone detection logic to match new zone positions
+    const redCenterAngle = Math.PI;
+    const blueCenterAngle = 0;
+    const arcLength = 0.3;
+    
+    let redZone = "UNKNOWN";
+    if (redBallAngle >= redCenterAngle + arcLength && redBallAngle < redCenterAngle + arcLength*2) redZone = "TOO EARLY";
+    else if (redBallAngle >= redCenterAngle && redBallAngle < redCenterAngle + arcLength) redZone = "HIT";
+    else if (redBallAngle >= redCenterAngle - arcLength && redBallAngle < redCenterAngle) redZone = "MISS";
+    
+    // In updateDebugInfo():
+    let blueZone = "UNKNOWN";
+    if (blueBallAngle >= arcLength*2 && blueBallAngle < arcLength*3) blueZone = "MISS";
+    else if (blueBallAngle >= arcLength && blueBallAngle < arcLength*2) blueZone = "HIT";
+    else if (blueBallAngle >= 0 && blueBallAngle < arcLength) blueZone = "TOO EARLY";
+    
+    
+    debugInfo.innerHTML = 
+      `Red: ${redAngle}° (${redZone}) Speed: ${redBallSpeed.toFixed(4)}<br>
+       Blue: ${blueAngle}° (${blueZone}) Speed: ${blueBallSpeed.toFixed(4)}`;
+  }
+  
+  
